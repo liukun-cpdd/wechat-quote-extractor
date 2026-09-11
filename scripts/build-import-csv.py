@@ -30,7 +30,28 @@ ALLOWED_MATCH_METHODS = {
     "exact",
     "format_normalized",
     "confirmed_alias",
+    "model_inferred",
     "user_confirmed",
+}
+ALLOWED_BRAND_RESOLUTION_METHODS = {
+    "explicit",
+    "confirmed_alias",
+    "model_inferred",
+    "user_confirmed",
+}
+CPU_BRANDS = {"Intel", "AMD"}
+FORBIDDEN_FORMAL_RECORD_FIELDS = {
+    "source_excerpt",
+    "quantity",
+    "year_or_batch",
+    "dc",
+    "extra_spec",
+    "memory_layout",
+    "warranty",
+    "packaging",
+    "packing_method",
+    "invoice_matching",
+    "invoice_details",
 }
 EXTRA_SPEC_PATTERN = re.compile(r"(?:\d+S)?\d+R\d+|\d+DR\d+", re.IGNORECASE)
 PRODUCT_MAP_HEADERS = [
@@ -175,13 +196,30 @@ def normalize_tax_status(
 ) -> str:
     raw = clean_text(record.get("tax_status_raw"))
     value = clean_text(record.get("tax_status"))
+    if not raw:
+        raise ValidationError(f"第{index}条缺少明确税务状态原文信号")
 
     def resolve(token: str) -> str | None:
-        if token in ALLOWED_TAX:
-            return token
-        return tax_aliases.get(token.casefold())
+        compact = re.sub(r"\s+", "", token)
+        if not compact:
+            return None
 
-    source_token = raw or value
+        alias = tax_aliases.get(compact.casefold())
+        if alias is not None:
+            return alias
+
+        has_untaxed = "未税" in compact or "不含税" in compact
+        positive_text = compact.replace("不含税", "")
+        has_taxed = "含税" in positive_text
+        if has_taxed and has_untaxed:
+            raise ValidationError(f"第{index}条同时包含含税与未税信号")
+        if has_taxed:
+            return "含税"
+        if has_untaxed:
+            return "未税"
+        return None
+
+    source_token = raw
     normalized = resolve(source_token)
     if normalized is None:
         raise ValidationError(f"第{index}条税务状态无效: {source_token or '<空>'}")
@@ -190,6 +228,48 @@ def normalize_tax_status(
         if value_normalized != normalized:
             raise ValidationError(f"第{index}条税务状态原文与归一值冲突")
     return normalized
+
+
+def validate_formal_record_boundary(record: dict[str, Any], index: int) -> None:
+    forbidden = sorted(FORBIDDEN_FORMAL_RECORD_FIELDS.intersection(record))
+    if forbidden:
+        raise ValidationError(
+            f"第{index}条包含不得长期保存的辅助字段: {', '.join(forbidden)}"
+        )
+
+
+def validate_cpu_brand_resolution(
+    record: dict[str, Any], index: int, mapped_product_name: str
+) -> None:
+    if clean_text(record.get("category")) != "cpu":
+        return
+
+    brand_raw = clean_text(record.get("brand_raw"))
+    brand_normalized = clean_text(record.get("brand_normalized"))
+    resolution_method = clean_text(record.get("brand_resolution_method"))
+    inference_reason = clean_text(record.get("brand_inference_reason"))
+    match_method = clean_text(record.get("match_method"))
+
+    if brand_normalized not in CPU_BRANDS:
+        raise ValidationError(f"第{index}条CPU品牌必须归一为Intel或AMD")
+    if not mapped_product_name.casefold().startswith(
+        f"{brand_normalized} ".casefold()
+    ):
+        raise ValidationError(f"第{index}条CPU品牌与映射表产品不一致")
+
+    if not brand_raw:
+        if resolution_method != "model_inferred" or match_method != "model_inferred":
+            raise ValidationError(f"第{index}条无品牌CPU必须记录model_inferred解析依据")
+        if not inference_reason:
+            raise ValidationError(f"第{index}条无品牌CPU缺少brand_inference_reason")
+        return
+
+    if resolution_method not in ALLOWED_BRAND_RESOLUTION_METHODS:
+        raise ValidationError(
+            f"第{index}条brand_resolution_method无效: {resolution_method or '<空>'}"
+        )
+    if resolution_method == "model_inferred":
+        raise ValidationError(f"第{index}条已出现品牌原文，不应标记为model_inferred")
 
 
 def validate_datetime(value: Any) -> tuple[str, str]:
@@ -401,6 +481,7 @@ def validate_eligible(
         raise ValidationError(
             f"第{index}条产品名必须使用映射表写法: {mapped[0]}"
         )
+    validate_cpu_brand_resolution(record, index, mapped[0])
 
     quote_datetime, file_date = validate_datetime(record.get("quote_datetime"))
     price = normalize_price(record.get("price"))
@@ -476,6 +557,7 @@ def main() -> int:
         for index, record in enumerate(payload["records"], start=1):
             if not isinstance(record, dict):
                 raise ValidationError(f"第{index}条记录必须是对象")
+            validate_formal_record_boundary(record, index)
             eligibility = record.get("eligibility")
             if eligibility not in counts:
                 raise ValidationError(f"第{index}条eligibility无效: {eligibility}")

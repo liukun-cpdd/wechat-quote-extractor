@@ -50,6 +50,8 @@ class BuildImportCsvTests(unittest.TestCase):
             "category": "memory",
             "brand_raw": "海力士",
             "brand_normalized": "海力士",
+            "brand_resolution_method": "explicit",
+            "brand_inference_reason": None,
             "product_name": "海力士 32G 3200",
             "matched_product_id": "25",
             "match_method": "exact",
@@ -74,7 +76,11 @@ class BuildImportCsvTests(unittest.TestCase):
         payload = {
             "versions": self.versions,
             "records": [
-                self.record(brand_raw="SK", match_method="confirmed_alias"),
+                self.record(
+                    brand_raw="SK",
+                    brand_resolution_method="confirmed_alias",
+                    match_method="confirmed_alias",
+                ),
                 {"eligibility": "excluded", "issues": ["product_not_in_map"]},
             ],
         }
@@ -96,6 +102,7 @@ class BuildImportCsvTests(unittest.TestCase):
                     brand_normalized="镁光",
                     product_name="镁光 32G 2933",
                     matched_product_id="28",
+                    brand_resolution_method="confirmed_alias",
                     match_method="confirmed_alias",
                 )
             ],
@@ -119,7 +126,6 @@ class BuildImportCsvTests(unittest.TestCase):
                             product_name="镁光 64G 3200",
                             matched_product_id="31",
                             price="4200",
-                            quantity="28条",
                             tax_status_raw=raw_tax,
                             tax_status=raw_tax,
                         )
@@ -136,6 +142,71 @@ class BuildImportCsvTests(unittest.TestCase):
                     rows[1],
                     ["26/09/11/14:30", "镁光 64G 3200", "4200", "未税", ""],
                 )
+
+    def test_tax_inclusive_invoice_qualifiers_normalize_without_confirmation(self) -> None:
+        phrases = ["含税不对应", "含税票不对应", "含税开其他品类发票"]
+        for phrase in phrases:
+            with self.subTest(phrase=phrase):
+                result, output_dir, temp_dir = self.run_build(
+                    {
+                        "versions": self.versions,
+                        "records": [
+                            self.record(
+                                tax_status_raw=phrase,
+                                tax_status="含税",
+                            )
+                        ],
+                    }
+                )
+                self.addCleanup(temp_dir.cleanup)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                with (output_dir / "26-09-11_memory.csv").open(
+                    encoding="utf-8", newline=""
+                ) as handle:
+                    rows = list(csv.reader(handle))
+                self.assertEqual(rows[1][3], "含税")
+
+    def test_missing_explicit_tax_signal_is_rejected(self) -> None:
+        result, _, temp_dir = self.run_build(
+            {
+                "versions": self.versions,
+                "records": [self.record(tax_status_raw=None, tax_status=None)],
+            }
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("缺少明确税务状态原文信号", result.stderr)
+
+    def test_invoice_correspondence_alone_does_not_establish_tax_status(self) -> None:
+        result, _, temp_dir = self.run_build(
+            {
+                "versions": self.versions,
+                "records": [
+                    self.record(
+                        tax_status_raw="发票不对应",
+                        tax_status=None,
+                    )
+                ],
+            }
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("税务状态无效", result.stderr)
+
+    def test_not_tax_inclusive_is_not_misread_as_tax_inclusive(self) -> None:
+        result, output_dir, temp_dir = self.run_build(
+            {
+                "versions": self.versions,
+                "records": [self.record(tax_status_raw="不含税", tax_status="未税")],
+            }
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with (output_dir / "26-09-11_memory.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(rows[1][3], "未税")
 
     def test_unconfirmed_tax_abbreviation_is_rejected(self) -> None:
         result, _, temp_dir = self.run_build(
@@ -256,6 +327,135 @@ class BuildImportCsvTests(unittest.TestCase):
         self.addCleanup(rejected_temp.cleanup)
         self.assertEqual(rejected.returncode, 2)
         self.assertIn("缺少当前批次确认对象", rejected.stderr)
+
+    def test_bare_cpu_model_can_infer_brand_and_write(self) -> None:
+        record = self.record(
+            category="cpu",
+            brand_raw=None,
+            brand_normalized="Intel",
+            brand_resolution_method="model_inferred",
+            brand_inference_reason="裸型号6530唯一匹配当前产品字典中的Intel 6530",
+            product_name="Intel 6530",
+            matched_product_id="1",
+            match_method="model_inferred",
+        )
+        result, output_dir, temp_dir = self.run_build(
+            {"versions": self.versions, "records": [record]}
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with (output_dir / "26-09-11_cpu.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(rows[1][1], "Intel 6530")
+
+    def test_cpu_with_explicit_brand_still_writes_normally(self) -> None:
+        record = self.record(
+            category="cpu",
+            brand_raw="Intel",
+            brand_normalized="Intel",
+            brand_resolution_method="explicit",
+            brand_inference_reason=None,
+            product_name="Intel 6430",
+            matched_product_id="84",
+            match_method="exact",
+        )
+        result, output_dir, temp_dir = self.run_build(
+            {"versions": self.versions, "records": [record]}
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with (output_dir / "26-09-11_cpu.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(rows[1][1], "Intel 6430")
+
+    def test_bare_cpu_model_requires_model_inference_evidence(self) -> None:
+        record = self.record(
+            category="cpu",
+            brand_raw=None,
+            brand_normalized="Intel",
+            brand_resolution_method=None,
+            brand_inference_reason=None,
+            product_name="Intel 6530",
+            matched_product_id="1",
+            match_method="exact",
+        )
+        result, _, temp_dir = self.run_build(
+            {"versions": self.versions, "records": [record]}
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("model_inferred解析依据", result.stderr)
+
+    def test_inferred_cpu_brand_must_match_mapped_product(self) -> None:
+        record = self.record(
+            category="cpu",
+            brand_raw=None,
+            brand_normalized="AMD",
+            brand_resolution_method="model_inferred",
+            brand_inference_reason="型号被识别为AMD",
+            product_name="Intel 6530",
+            matched_product_id="1",
+            match_method="model_inferred",
+        )
+        result, _, temp_dir = self.run_build(
+            {"versions": self.versions, "records": [record]}
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("CPU品牌与映射表产品不一致", result.stderr)
+
+    def test_recognizable_unmapped_cpu_is_excluded_without_brand_question(self) -> None:
+        payload = {
+            "versions": self.versions,
+            "records": [
+                {
+                    "category": "cpu",
+                    "brand_raw": None,
+                    "brand_normalized": "AMD",
+                    "brand_resolution_method": "model_inferred",
+                    "brand_inference_reason": "型号可明确识别为AMD",
+                    "eligibility": "excluded",
+                    "requires_confirmation": False,
+                    "issues": ["product_not_in_map"],
+                }
+            ],
+        }
+        result, _, temp_dir = self.run_build(payload)
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["counts"]["excluded"], 1)
+        self.assertEqual(output["written_rows"], 0)
+
+    def test_transient_auxiliary_fields_are_rejected_from_formal_records(self) -> None:
+        fields = {
+            "source_excerpt": "原文",
+            "quantity": "28条",
+            "year_or_batch": "DC26",
+            "dc": "DC26",
+            "extra_spec": ["2R4"],
+            "memory_layout": "2R4",
+            "warranty": "一年",
+            "packaging": "原包",
+            "packing_method": "十张一箱",
+            "invoice_matching": "不对应",
+            "invoice_details": "开其他品类发票",
+        }
+        for field, value in fields.items():
+            with self.subTest(field=field):
+                result, _, temp_dir = self.run_build(
+                    {
+                        "versions": self.versions,
+                        "records": [self.record(**{field: value})],
+                    }
+                )
+                self.addCleanup(temp_dir.cleanup)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("不得长期保存的辅助字段", result.stderr)
 
     def test_stale_batch_version_is_rejected(self) -> None:
         versions = dict(self.versions)

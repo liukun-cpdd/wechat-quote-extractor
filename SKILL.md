@@ -2,7 +2,7 @@
 name: wechat-quote-extractor
 description: Extract structured market quotes from pasted Chinese hardware offer or purchase text, propose reviewable corrections for likely brand or model variants, and generate validated category CSV files for the existing market import workflow. Use for 微信报价整理、行情报价识别、采购价或售价提取、以及 GPU、CPU、内存和硬盘行情导入准备，不用于联系人或聊天记录管理
 metadata:
-  version: "0.3.3"
+  version: "0.4.0"
 ---
 
 # WeChat Quote Extractor
@@ -31,11 +31,11 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 
 1. Keep the pasted text unchanged as a transient reference; do not create contact or chat-history objects
 2. Create a cleaned working copy by decoding harmless HTML entities, removing decorative emoji, normalizing whitespace, and preserving business-bearing tokens
-3. Segment sections and product lines, resolve inherited context, and extract literal fields before deciding eligibility
-4. Resolve product identity using the product map, confirmed alias map, source attributes, and semantic judgment
+3. Segment sections and product lines, resolve inherited context, and extract literal signals before deciding eligibility
+4. Resolve product identity using the product map, confirmed alias map, source attributes, and semantic judgment. For a CPU without an explicit brand, infer Intel or AMD from the complete model expression before matching the map
 5. If the wording is likely a typo, shorthand, or unconfirmed alias, propose mapped candidates with reasons. Do not silently replace the source wording
 6. Ignore clearly unrelated products. Do not retain or ask about them unless the user requests a full audit
-7. Classify relevant candidates as `eligible`, `needs_confirmation`, or `excluded`, then show one complete preview
+7. Discard extraction-only quantity, year, DC, batch, memory-layout, warranty, packing, and invoice-correspondence signals, then classify relevant candidates as `eligible`, `needs_confirmation`, or `excluded` and show one complete preview
 8. Ask all material clarification questions together. A user's answer may resolve only the current batch; it must not modify Skill files or shared dictionaries
 9. Rebuild the preview after confirmation and run deterministic validation
 10. Generate CSV files from `eligible` records with `scripts/build-import-csv.py`
@@ -45,6 +45,8 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 
 - The model may recognize varied wording and propose candidates; it may not invent a product, brand, price, tax status, or mapping
 - Automatic normalization is limited to formatting differences and confirmed entries in the relevant alias map
+- CPU brand inference from a recognizable model is identity resolution, not alias creation. It is allowed only when the model identifies Intel or AMD and exactly one current product-map row matches
+- A recognizable CPU brand with no current product-map match is `product_not_in_map`; do not ask the user to confirm an already identifiable brand
 - A likely correction that changes brand or model identity requires user confirmation for the current batch
 - Current-batch confirmation may produce an eligible row only when it resolves to one existing `product_id`
 - A runtime correction is feedback, not a dictionary update. Never edit this Skill because a user accepts one suggestion during extraction
@@ -54,6 +56,8 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 
 - Unmarked currency is CNY
 - `WS` is a confirmed tax-status alias for `未税`; matching is case-insensitive
+- Tax status means only whether the quoted price includes tax. Any positive phrase containing `含税`, including invoice-mismatch wording, normalizes to `含税`; invoice correspondence is discarded
+- Do not infer tax status when no explicit `含税`, `未税`, `不含税`, or confirmed tax alias appears
 - Use paste time when the source has no explicit quote time
 - Missing condition is allowed and produces an empty `货况` cell
 - For GPU, CPU, and memory, the only non-empty output conditions are `全新` and `拆机`. Classify an explicit condition semantically: clearly brand-new is `全新`; any wording that clearly indicates the item is not brand-new is `拆机`. Terms such as `二手`, `拆新`, `拆机新`, `翻新`, and percentage-new descriptions are examples, not an exhaustive list
@@ -95,4 +99,6 @@ CSV output contains exactly
 
 Use one file per date and category named `yy-MM-dd_category.csv`
 
-Do not include contacts, chat history, direction, quantity, warehouse, warranty, year, batch, DC, extra specifications, issues, candidates, confidence, feedback, or version fields in the CSV
+Do not include contacts, chat history, direction, warehouse, issues, candidates, confidence, feedback, or version fields in the CSV
+
+Quantity, year, batch, DC, memory layout, warranty, packaging, packing method, invoice correspondence, and invoice-description details are extraction-only. Do not retain them in the finalized structured batch or CSV

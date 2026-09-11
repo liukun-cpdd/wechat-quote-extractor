@@ -16,12 +16,12 @@ Expected interpretation
 
 | Candidate | Status | Reason |
 |---|---|---|
-| 镁光 64G 4800, 17000 CNY, 含税, 拆机 | Eligible after paste time | `22年` and `深圳仓` remain internal |
+| 镁光 64G 4800, 17000 CNY, 含税, 拆机 | Eligible after paste time | `22年` is used transiently then discarded; `深圳仓` may remain for location context |
 | 镁光 48G 6400, 1400 USD, 全新 | Excluded or pending | No current mapped product; tax is also missing |
 | 三星 128G 6400, 4550 USD, 全新 | Excluded or pending | No current mapped product; tax is also missing |
 | 三星 32G 6400 purchase request | Excluded | No concrete purchase price |
 
-Quantities are recognized but never used as prices
+Quantities are recognized transiently to avoid treating them as prices, then discarded before the finalized batch
 
 ## Paragraph defaults and confirmed alias
 
@@ -37,7 +37,7 @@ Expected interpretation
 
 | Candidate | Status | Reason |
 |---|---|---|
-| 三星 64G 2666 | Eligible after paste time | Layout is preserved outside product name |
+| 三星 64G 2666 | Eligible after paste time | Layout is used during extraction, omitted from the product name, then discarded |
 | 海力士 32G 3200 | Eligible after paste time | `SK` is a confirmed alias in the current alias map |
 | 镁光 32G 2933 | Eligible after paste time | `MT` is a confirmed alias for `镁光` in the current alias map |
 
@@ -65,6 +65,20 @@ When a mistyped brand plus capacity and frequency point to several mapped rows, 
 
 When one raw brand appears repeatedly in feedback, record that as a proposal for a future reviewed release. Runtime acceptance still does not edit the Skill
 
+## CPU without an explicit brand
+
+```text
+6530 含税 12800
+```
+
+When the complete model expression uniquely matches `Intel 6530` in the current product map, infer `Intel`, record `model_inferred` with a concrete reason, and process the row without asking for the omitted brand
+
+This example does not create a fixed `6530 → Intel` rule. Apply the same semantic procedure to every recognizable Intel or AMD CPU expression
+
+- If the model clearly identifies Intel or AMD but the resulting product is absent from the current map, mark `product_not_in_map` and do not ask for brand confirmation
+- If the model does not determine a brand, maps to multiple products, or lacks a required suffix or discriminator, use `needs_confirmation`
+- Never default all bare numeric CPU models to Intel
+
 ## Clearly unrelated product
 
 If a line is clearly outside CPU, GPU, memory, and the currently supported disk scope, ignore it before building quote records. Do not preserve a named exclusion list for each unrelated consumer product
@@ -91,18 +105,31 @@ This has no concrete price and cannot enter the market CSV
 镁光64G 3200 28条 WS 4200
 ```
 
-Expected literal extraction
+Expected processing
 
-| Field | Value |
+| Stage | Result |
 |---|---|
-| Product candidate | `镁光 64G 3200` |
-| Quantity | `28条` |
-| `tax_status_raw` | `WS` |
-| Normalized `tax_status` | `未税` |
-| Price candidate | `4200` CNY |
-| Condition | Missing; keep empty |
+| Transient extraction | Recognize `28条` as quantity so it is not mistaken for price |
+| Final product | `镁光 64G 3200` |
+| Final tax evidence | `tax_status_raw=WS`, `tax_status=未税` |
+| Final price | `4200` CNY |
+| Final condition | Missing; keep empty |
 
-`WS` is a confirmed tax alias and matches case-insensitively. This standalone line does not by itself establish sell or purchase direction; inherit direction from valid surrounding context or ask for it before CSV generation
+Discard `28条` before creating the finalized batch. `WS` is a confirmed tax alias and matches case-insensitively. This standalone line does not by itself establish sell or purchase direction; inherit direction from valid surrounding context or ask for it before CSV generation
+
+## Tax inclusion versus invoice correspondence
+
+```text
+默认拆机 质保一年
+含税不对应
+三星 64G 2666 2990
+```
+
+The inherited tax status is `含税`. `不对应` describes invoice correspondence, not whether the quoted price includes tax, so it does not trigger confirmation
+
+Retain only `tax_status_raw=含税` and `tax_status=含税` in the finalized row. Discard `质保一年` and the invoice-correspondence wording. The same result applies to `含税票不对应` and `含税开其他品类发票`
+
+`发票不对应` by itself contains no tax-inclusion signal and therefore cannot establish `含税` or `未税`
 
 ## Multi-category input
 
@@ -118,7 +145,7 @@ If one inseparable bundle price covers multiple categories, exclude it or ask fo
 ```
 
 - `18x00` is a masked price and the row is excluded until replaced by an exact amount
-- `25+` remains DC or batch information only
+- `25+` is treated as a transient DC or batch signal and discarded before the finalized batch
 - `现货` does not imply `全新` or `拆机`
 - The second row may use an empty condition when all other fields are eligible
 
