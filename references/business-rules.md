@@ -156,7 +156,10 @@ Do not generate a USD-derived row when Hong Kong location is unconfirmed or any 
 ## Tax, condition, and time
 
 - Tax status accepts `含税` or `未税`; missing tax status requires confirmation
-- Condition accepts `全新`, `拆机`, or empty
+- For GPU, CPU, and memory, the normalized condition accepts only `全新`, `拆机`, or empty
+- Normalize `拆新` and `拆机新` to `拆机`
+- Normalize a vague or specific percentage-new expression to `拆机`, including `几成新`, Chinese-numeral forms such as `九成新`, and digit forms such as `9成新`
+- Preserve the literal source wording in `condition_raw`; write only the normalized `condition` to CSV
 - Do not infer condition from `现货`, warehouse, packaging, year, DC, or quantity
 - When the source has no explicit quote time, use the user's paste time as `quote_datetime`
 - Preserve `direction` internally because the CSV cannot distinguish purchase from sell evidence

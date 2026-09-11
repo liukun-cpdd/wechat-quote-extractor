@@ -7,10 +7,10 @@ Before CSV generation, produce a JSON object with `versions` and `records`. Incl
 ```json
 {
   "versions": {
-    "skill_version": "0.3.0",
-    "ruleset_version": "2026-09-11.1",
+    "skill_version": "0.3.1",
+    "ruleset_version": "2026-09-11.2",
     "product_map_version": "2026-09-11.1",
-    "alias_map_version": "2026-09-11.1"
+    "alias_map_version": "2026-09-11.2"
   },
   "conversion": {
     "usd_cny_rate": null,
@@ -45,6 +45,7 @@ Before CSV generation, produce a JSON object with `versions` and `records`. Incl
       "currency": "CNY",
       "converted_price_cny": null,
       "tax_status": "含税",
+      "condition_raw": null,
       "condition": null,
       "quantity": null,
       "price_unit": null,
@@ -103,7 +104,8 @@ This object proves only that the current row was reviewed. It does not authorize
 | `currency` | string or null | `CNY`, `USD`, or null; unmarked input becomes `CNY` |
 | `converted_price_cny` | string, number, or null | Preview or audit value; recomputed by the generator |
 | `tax_status` | string or null | `含税`, `未税` |
-| `condition` | string or null | `全新`, `拆机`, or null |
+| `condition_raw` | string or null | Literal condition expression such as `拆机新` or `九成新`; internal only |
+| `condition` | string or null | Normalized `全新`, `拆机`, or null; `拆新`, `拆机新`, and percentage-new expressions normalize to `拆机` |
 | `quantity` | string, number, or null | Internal only |
 | `price_unit` | string or null | Internal only |
 | `eligibility` | string | `eligible`, `needs_confirmation`, `excluded` |
@@ -130,7 +132,7 @@ An `eligible` record must have
 - Positive numeric price
 - Currency `CNY` or `USD`
 - Tax status `含税` or `未税`
-- Condition `全新`, `拆机`, or null
+- Condition normalized to `全新`, `拆机`, or null
 - No unresolved issue
 
 A proposed correction cannot be eligible before confirmation. An unsupported hard-disk row, masked price, missing price, unresolved product, or missing required field cannot be eligible

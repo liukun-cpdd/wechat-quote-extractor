@@ -37,6 +37,6 @@ Accepting a suggestion changes only `user_decision` and the current batch result
 7. Run regression tests for exact matches, confirmed aliases, user-confirmed candidates, unresolved candidates, version mismatch, masked prices, and USD conversion
 8. Validate the Skill with the system Skill Creator validator
 9. Commit and tag the release in Git
-10. Distribute one versioned archive such as `wechat-quote-extractor-v0.3.0.zip`
+10. Distribute one versioned archive such as `wechat-quote-extractor-v<version>.zip`
 
 Do not distribute an uncommitted working directory as a release

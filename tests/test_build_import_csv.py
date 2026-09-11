@@ -84,6 +84,56 @@ class BuildImportCsvTests(unittest.TestCase):
             rows = list(csv.reader(handle))
         self.assertEqual(rows[1], ["26/09/11/14:30", "海力士 32G 3200", "2650", "含税", ""])
 
+    def test_mt_is_a_confirmed_micron_alias(self) -> None:
+        payload = {
+            "versions": self.versions,
+            "records": [
+                self.record(
+                    brand_raw="MT",
+                    brand_normalized="镁光",
+                    product_name="镁光 32G 2933",
+                    matched_product_id="28",
+                    match_method="confirmed_alias",
+                )
+            ],
+        }
+        result, output_dir, temp_dir = self.run_build(payload)
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with (output_dir / "26-09-11_memory.csv").open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(rows[1][1], "镁光 32G 2933")
+
+    def test_disassembly_like_conditions_normalize_to_disassembled(self) -> None:
+        for raw_condition in ["拆新", "拆机新", "几成新", "九成新", "9成新", "9.5 成新"]:
+            with self.subTest(raw_condition=raw_condition):
+                result, output_dir, temp_dir = self.run_build(
+                    {
+                        "versions": self.versions,
+                        "records": [
+                            self.record(
+                                condition_raw=raw_condition,
+                                condition=raw_condition,
+                            )
+                        ],
+                    }
+                )
+                self.addCleanup(temp_dir.cleanup)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                with (output_dir / "26-09-11_memory.csv").open(
+                    encoding="utf-8", newline=""
+                ) as handle:
+                    rows = list(csv.reader(handle))
+                self.assertEqual(rows[1][4], "拆机")
+
+    def test_unknown_condition_is_rejected(self) -> None:
+        result, _, temp_dir = self.run_build(
+            {"versions": self.versions, "records": [self.record(condition="二手")]}
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("货况无效", result.stderr)
+
     def test_user_confirmed_typo_requires_current_batch_evidence(self) -> None:
         record = self.record(
             category="gpu",

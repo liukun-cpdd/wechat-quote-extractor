@@ -39,9 +39,9 @@ Expected interpretation
 |---|---|---|
 | 三星 64G 2666 | Eligible after paste time | Layout is preserved outside product name |
 | 海力士 32G 3200 | Eligible after paste time | `SK` is a confirmed alias in the current alias map |
-| MT 32G 2933 | Needs confirmation | `MT` is not a confirmed alias; propose only plausible mapped products |
+| 镁光 32G 2933 | Eligible after paste time | `MT` is a confirmed alias for `镁光` in the current alias map |
 
-If the user selects one proposed mapped product for `MT`, mark that row `user_confirmed` for the current batch. Do not add `MT` to the alias map
+From version `0.3.1`, `MT` normalizes to `镁光` automatically. Earlier versions remain unchanged in Git history
 
 ## Typo and shorthand proposal
 
@@ -102,6 +102,22 @@ If one inseparable bundle price covers multiple categories, exclude it or ask fo
 - `25+` remains DC or batch information only
 - `现货` does not imply `全新` or `拆机`
 - The second row may use an empty condition when all other fields are eligible
+
+## Condition normalization
+
+For GPU, CPU, and memory, preserve the raw expression and normalize the final condition as follows
+
+| Raw expression | `condition_raw` | Final `condition` |
+|---|---|---|
+| `全新` | `全新` | `全新` |
+| `拆机` | `拆机` | `拆机` |
+| `拆新` | `拆新` | `拆机` |
+| `拆机新` | `拆机新` | `拆机` |
+| `几成新` | `几成新` | `拆机` |
+| `九成新`, `9成新` | Original wording | `拆机` |
+| No condition wording | null | null |
+
+Do not infer a condition from `现货`, warehouse, packaging, year, DC, or quantity
 
 ## Hong Kong USD conversion
 

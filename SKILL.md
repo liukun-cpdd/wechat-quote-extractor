@@ -2,7 +2,7 @@
 name: wechat-quote-extractor
 description: Extract structured market quotes from pasted Chinese hardware offer or purchase text, propose reviewable corrections for likely brand or model variants, and generate validated category CSV files for the existing market import workflow. Use for 微信报价整理、行情报价识别、采购价或售价提取、以及 GPU、CPU、内存和硬盘行情导入准备，不用于联系人或聊天记录管理
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
 ---
 
 # WeChat Quote Extractor
@@ -53,6 +53,7 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 - Unmarked currency is CNY
 - Use paste time when the source has no explicit quote time
 - Missing condition is allowed and produces an empty `货况` cell
+- For GPU, CPU, and memory, the only non-empty output conditions are `全新` and `拆机`. Normalize `拆新`, `拆机新`, `几成新`, and specific percentage-new expressions such as `九成新` or `9成新` to `拆机`
 - A price with `x` or `X` replacing digits is invalid; multiplication such as `25800*10张` is not masking
 - Explicit sell and purchase prices can be market evidence; a request for a quote without a concrete price cannot
 - USD located in Hong Kong is converted with the official applicable USD/CNY central parity rate multiplied by `1.13`, then rounded to a whole yuan using decimal half-up

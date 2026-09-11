@@ -21,6 +21,10 @@ CATEGORY_CODES = {"gpu": "gpu", "cpu": "cpu", "memory": "memory"}
 ALLOWED_DIRECTIONS = {"sell", "purchase"}
 ALLOWED_TAX = {"含税", "未税"}
 ALLOWED_CONDITIONS = {"", "全新", "拆机"}
+DISASSEMBLED_CONDITION_ALIASES = {"拆新", "拆机新", "几成新"}
+PERCENT_NEW_CONDITION_PATTERN = re.compile(
+    r"^(?:[一二三四五六七八九十两百零\d]+(?:\.\d+)?)成新$"
+)
 ALLOWED_MATCH_METHODS = {
     "exact",
     "format_normalized",
@@ -123,6 +127,19 @@ def normalize_price(value: Any) -> str:
     if "." in normalized:
         normalized = normalized.rstrip("0").rstrip(".")
     return normalized
+
+
+def normalize_condition(value: Any, index: int) -> str:
+    raw = clean_text(value)
+    compact = re.sub(r"\s+", "", raw)
+    if compact in ALLOWED_CONDITIONS:
+        return compact
+    if (
+        compact in DISASSEMBLED_CONDITION_ALIASES
+        or PERCENT_NEW_CONDITION_PATTERN.fullmatch(compact)
+    ):
+        return "拆机"
+    raise ValidationError(f"第{index}条货况无效: {raw or '<空>'}")
 
 
 def validate_datetime(value: Any) -> tuple[str, str]:
@@ -330,9 +347,7 @@ def validate_eligible(
     if tax_status not in ALLOWED_TAX:
         raise ValidationError(f"第{index}条税务状态无效: {tax_status or '<空>'}")
 
-    condition = clean_text(record.get("condition"))
-    if condition not in ALLOWED_CONDITIONS:
-        raise ValidationError(f"第{index}条货况无效: {condition or '<空>'}")
+    condition = normalize_condition(record.get("condition"), index)
 
     row = (quote_datetime, product_name, csv_price, tax_status, condition)
     return f"{file_date}_{CATEGORY_CODES[category]}.csv", row
