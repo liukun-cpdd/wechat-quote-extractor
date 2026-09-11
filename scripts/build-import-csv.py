@@ -21,7 +21,12 @@ CATEGORY_CODES = {"gpu": "gpu", "cpu": "cpu", "memory": "memory"}
 ALLOWED_DIRECTIONS = {"sell", "purchase"}
 ALLOWED_TAX = {"含税", "未税"}
 ALLOWED_CONDITIONS = {"", "全新", "拆机"}
-EXCLUDED_PRODUCT_TOKENS = ("冰刃", "兵刃")
+ALLOWED_MATCH_METHODS = {
+    "exact",
+    "format_normalized",
+    "confirmed_alias",
+    "user_confirmed",
+}
 EXTRA_SPEC_PATTERN = re.compile(r"(?:\d+S)?\d+R\d+|\d+DR\d+", re.IGNORECASE)
 PRODUCT_MAP_HEADERS = [
     "product_id",
@@ -30,7 +35,18 @@ PRODUCT_MAP_HEADERS = [
     "csv_product_name",
     "source_condition",
 ]
+ALIAS_MAP_HEADERS = ["alias", "canonical_brand", "status", "version_added", "note"]
+RELEASE_VERSION_KEYS = [
+    "skill_version",
+    "ruleset_version",
+    "product_map_version",
+    "alias_map_version",
+]
 DEFAULT_PRODUCT_MAP = Path(__file__).resolve().parent.parent / "references" / "product-model-map.csv"
+DEFAULT_ALIAS_MAP = Path(__file__).resolve().parent.parent / "references" / "brand-alias-map.csv"
+DEFAULT_RELEASE_MANIFEST = (
+    Path(__file__).resolve().parent.parent / "references" / "release-manifest.json"
+)
 USD_CONVERSION_FACTOR = Decimal("1.13")
 OFFICIAL_RATE_SOURCE = "中国人民银行授权中国外汇交易中心公布的人民币汇率中间价"
 OFFICIAL_RATE_HOSTS = {"www.pbc.gov.cn", "pbc.gov.cn", "www.chinamoney.com.cn", "chinamoney.com.cn"}
@@ -51,6 +67,18 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_PRODUCT_MAP,
         help="Product-model map CSV; defaults to the bundled map",
+    )
+    parser.add_argument(
+        "--alias-map",
+        type=Path,
+        default=DEFAULT_ALIAS_MAP,
+        help="Confirmed brand-alias map CSV; defaults to the bundled map",
+    )
+    parser.add_argument(
+        "--release-manifest",
+        type=Path,
+        default=DEFAULT_RELEASE_MANIFEST,
+        help="Release version manifest JSON; defaults to the bundled manifest",
     )
     parser.add_argument(
         "--existing-dir",
@@ -128,6 +156,62 @@ def load_product_map(path: Path) -> dict[tuple[str, str], tuple[str, str]]:
         raise ValidationError(f"无法读取产品映射表 {path}: {exc}") from exc
 
 
+def load_brand_aliases(path: Path) -> dict[str, str]:
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            if reader.fieldnames != ALIAS_MAP_HEADERS:
+                raise ValidationError(f"品牌别名表表头不匹配: {path}")
+            aliases: dict[str, str] = {}
+            for line_number, row in enumerate(reader, start=2):
+                alias = clean_text(row["alias"])
+                canonical_brand = clean_text(row["canonical_brand"])
+                status = clean_text(row["status"])
+                version_added = clean_text(row["version_added"])
+                if not alias or not canonical_brand or not version_added:
+                    raise ValidationError(f"品牌别名表第{line_number}行字段无效")
+                if status != "confirmed":
+                    raise ValidationError(f"品牌别名表第{line_number}行不是confirmed")
+                key = alias.casefold()
+                if key in aliases:
+                    raise ValidationError(f"品牌别名重复: {alias}")
+                aliases[key] = canonical_brand
+            return aliases
+    except OSError as exc:
+        raise ValidationError(f"无法读取品牌别名表 {path}: {exc}") from exc
+
+
+def load_release_manifest(path: Path) -> dict[str, str]:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            manifest = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValidationError(f"无法读取发布清单 {path}: {exc}") from exc
+    if not isinstance(manifest, dict):
+        raise ValidationError("发布清单必须是JSON对象")
+    versions: dict[str, str] = {}
+    for key in RELEASE_VERSION_KEYS:
+        value = clean_text(manifest.get(key))
+        if not value:
+            raise ValidationError(f"发布清单缺少版本字段: {key}")
+        versions[key] = value
+    return versions
+
+
+def validate_payload_versions(payload: dict[str, Any], manifest: dict[str, str]) -> None:
+    versions = payload.get("versions")
+    if not isinstance(versions, dict):
+        raise ValidationError("JSON根对象必须包含versions对象")
+    mismatches = []
+    for key in RELEASE_VERSION_KEYS:
+        actual = clean_text(versions.get(key))
+        expected = manifest[key]
+        if actual != expected:
+            mismatches.append(f"{key}: 输入={actual or '<空>'}, 当前={expected}")
+    if mismatches:
+        raise ValidationError("批次版本与当前发布不一致: " + "; ".join(mismatches))
+
+
 def load_usd_conversion(payload: dict[str, Any]) -> tuple[Decimal, str, str, str, Decimal]:
     conversion = payload.get("conversion")
     if not isinstance(conversion, dict):
@@ -159,6 +243,7 @@ def validate_eligible(
     index: int,
     payload: dict[str, Any],
     product_map: dict[tuple[str, str], tuple[str, str]],
+    brand_aliases: dict[str, str],
 ) -> tuple[str, tuple[str, ...]]:
     if not isinstance(record, dict):
         raise ValidationError(f"第{index}条记录必须是对象")
@@ -166,7 +251,9 @@ def validate_eligible(
         raise ValidationError(f"第{index}条记录不是eligible，不应进入验证函数")
 
     issues = record.get("issues", [])
-    if issues not in (None, []) and len(issues) > 0:
+    if not isinstance(issues, list):
+        raise ValidationError(f"第{index}条issues必须是数组")
+    if issues:
         raise ValidationError(f"第{index}条eligible记录仍有未解决issues")
 
     direction = clean_text(record.get("direction"))
@@ -178,17 +265,36 @@ def validate_eligible(
         raise ValidationError(f"第{index}条品类尚不支持生成CSV: {category or '<空>'}")
 
     brand_raw = clean_text(record.get("brand_raw"))
+    brand_normalized = clean_text(record.get("brand_normalized"))
     product_name = clean_text(record.get("product_name"))
     if not product_name:
         raise ValidationError(f"第{index}条产品名型号为空")
-    if brand_raw.upper() == "MT" or re.match(r"^MT(?:\s|$)", product_name, re.IGNORECASE):
-        raise ValidationError(f"第{index}条MT品牌未经确认，不能进入CSV")
-    if any(token in product_name for token in EXCLUDED_PRODUCT_TOKENS):
-        raise ValidationError(f"第{index}条产品属于已排除范围")
     if EXTRA_SPEC_PATTERN.search(product_name):
         raise ValidationError(f"第{index}条产品名包含当前不应写入的附加规格")
     if "\n" in product_name or "\r" in product_name:
         raise ValidationError(f"第{index}条产品名不能包含换行")
+
+    requires_confirmation = record.get("requires_confirmation")
+    if requires_confirmation is not False:
+        raise ValidationError(f"第{index}条eligible记录仍需确认")
+    match_method = clean_text(record.get("match_method"))
+    if match_method not in ALLOWED_MATCH_METHODS:
+        raise ValidationError(f"第{index}条match_method无效: {match_method or '<空>'}")
+    if match_method == "confirmed_alias":
+        expected_brand = brand_aliases.get(brand_raw.casefold())
+        if expected_brand is None or expected_brand != brand_normalized:
+            raise ValidationError(f"第{index}条品牌别名未在当前confirmed映射表中")
+    if match_method == "user_confirmed":
+        confirmation = record.get("confirmation")
+        if not isinstance(confirmation, dict):
+            raise ValidationError(f"第{index}条缺少当前批次确认对象")
+        if confirmation.get("confirmed") is not True:
+            raise ValidationError(f"第{index}条当前批次确认状态无效")
+        if clean_text(confirmation.get("scope")) != "current_batch":
+            raise ValidationError(f"第{index}条确认范围必须是current_batch")
+        if clean_text(confirmation.get("confirmed_value")) != product_name:
+            raise ValidationError(f"第{index}条确认值与产品名不一致")
+        validate_datetime(confirmation.get("confirmed_at"))
 
     matched_product_id = clean_text(record.get("matched_product_id"))
     mapped = product_map.get((category, matched_product_id))
@@ -266,7 +372,10 @@ def main() -> int:
     args = parse_args()
     try:
         payload = load_payload(args.input)
+        release_versions = load_release_manifest(args.release_manifest)
+        validate_payload_versions(payload, release_versions)
         product_map = load_product_map(args.product_map)
+        brand_aliases = load_brand_aliases(args.alias_map)
         grouped: dict[str, list[tuple[str, ...]]] = defaultdict(list)
         counts = {"eligible": 0, "needs_confirmation": 0, "excluded": 0}
 
@@ -278,7 +387,9 @@ def main() -> int:
                 raise ValidationError(f"第{index}条eligibility无效: {eligibility}")
             counts[eligibility] += 1
             if eligibility == "eligible":
-                filename, row = validate_eligible(record, index, payload, product_map)
+                filename, row = validate_eligible(
+                    record, index, payload, product_map, brand_aliases
+                )
                 grouped[filename].append(row)
 
         outputs = []
@@ -307,7 +418,12 @@ def main() -> int:
 
         print(
             json.dumps(
-                {"counts": counts, "written_rows": total_written, "outputs": outputs},
+                {
+                    "versions": release_versions,
+                    "counts": counts,
+                    "written_rows": total_written,
+                    "outputs": outputs,
+                },
                 ensure_ascii=False,
                 indent=2,
             )
