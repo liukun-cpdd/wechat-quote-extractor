@@ -40,15 +40,24 @@ PRODUCT_MAP_HEADERS = [
     "csv_product_name",
     "source_condition",
 ]
-ALIAS_MAP_HEADERS = ["alias", "canonical_brand", "status", "version_added", "note"]
+BRAND_ALIAS_MAP_HEADERS = ["alias", "canonical_brand", "status", "version_added", "note"]
+TAX_ALIAS_MAP_HEADERS = [
+    "alias",
+    "canonical_tax_status",
+    "status",
+    "version_added",
+    "note",
+]
 RELEASE_VERSION_KEYS = [
     "skill_version",
     "ruleset_version",
     "product_map_version",
     "alias_map_version",
+    "tax_map_version",
 ]
 DEFAULT_PRODUCT_MAP = Path(__file__).resolve().parent.parent / "references" / "product-model-map.csv"
 DEFAULT_ALIAS_MAP = Path(__file__).resolve().parent.parent / "references" / "brand-alias-map.csv"
+DEFAULT_TAX_ALIAS_MAP = Path(__file__).resolve().parent.parent / "references" / "tax-alias-map.csv"
 DEFAULT_RELEASE_MANIFEST = (
     Path(__file__).resolve().parent.parent / "references" / "release-manifest.json"
 )
@@ -78,6 +87,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_ALIAS_MAP,
         help="Confirmed brand-alias map CSV; defaults to the bundled map",
+    )
+    parser.add_argument(
+        "--tax-alias-map",
+        type=Path,
+        default=DEFAULT_TAX_ALIAS_MAP,
+        help="Confirmed tax-status alias map CSV; defaults to the bundled map",
     )
     parser.add_argument(
         "--release-manifest",
@@ -155,6 +170,28 @@ def normalize_condition(record: dict[str, Any], index: int) -> str:
     return "拆机"
 
 
+def normalize_tax_status(
+    record: dict[str, Any], index: int, tax_aliases: dict[str, str]
+) -> str:
+    raw = clean_text(record.get("tax_status_raw"))
+    value = clean_text(record.get("tax_status"))
+
+    def resolve(token: str) -> str | None:
+        if token in ALLOWED_TAX:
+            return token
+        return tax_aliases.get(token.casefold())
+
+    source_token = raw or value
+    normalized = resolve(source_token)
+    if normalized is None:
+        raise ValidationError(f"第{index}条税务状态无效: {source_token or '<空>'}")
+    if value:
+        value_normalized = resolve(value)
+        if value_normalized != normalized:
+            raise ValidationError(f"第{index}条税务状态原文与归一值冲突")
+    return normalized
+
+
 def validate_datetime(value: Any) -> tuple[str, str]:
     raw = clean_text(value)
     try:
@@ -190,7 +227,7 @@ def load_brand_aliases(path: Path) -> dict[str, str]:
     try:
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle)
-            if reader.fieldnames != ALIAS_MAP_HEADERS:
+            if reader.fieldnames != BRAND_ALIAS_MAP_HEADERS:
                 raise ValidationError(f"品牌别名表表头不匹配: {path}")
             aliases: dict[str, str] = {}
             for line_number, row in enumerate(reader, start=2):
@@ -209,6 +246,35 @@ def load_brand_aliases(path: Path) -> dict[str, str]:
             return aliases
     except OSError as exc:
         raise ValidationError(f"无法读取品牌别名表 {path}: {exc}") from exc
+
+
+def load_tax_aliases(path: Path) -> dict[str, str]:
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            if reader.fieldnames != TAX_ALIAS_MAP_HEADERS:
+                raise ValidationError(f"税务别名表表头不匹配: {path}")
+            aliases: dict[str, str] = {}
+            for line_number, row in enumerate(reader, start=2):
+                alias = clean_text(row["alias"])
+                canonical_tax_status = clean_text(row["canonical_tax_status"])
+                status = clean_text(row["status"])
+                version_added = clean_text(row["version_added"])
+                if (
+                    not alias
+                    or canonical_tax_status not in ALLOWED_TAX
+                    or not version_added
+                ):
+                    raise ValidationError(f"税务别名表第{line_number}行字段无效")
+                if status != "confirmed":
+                    raise ValidationError(f"税务别名表第{line_number}行不是confirmed")
+                key = alias.casefold()
+                if key in aliases:
+                    raise ValidationError(f"税务别名重复: {alias}")
+                aliases[key] = canonical_tax_status
+            return aliases
+    except OSError as exc:
+        raise ValidationError(f"无法读取税务别名表 {path}: {exc}") from exc
 
 
 def load_release_manifest(path: Path) -> dict[str, str]:
@@ -274,6 +340,7 @@ def validate_eligible(
     payload: dict[str, Any],
     product_map: dict[tuple[str, str], tuple[str, str]],
     brand_aliases: dict[str, str],
+    tax_aliases: dict[str, str],
 ) -> tuple[str, tuple[str, ...]]:
     if not isinstance(record, dict):
         raise ValidationError(f"第{index}条记录必须是对象")
@@ -356,9 +423,7 @@ def validate_eligible(
         )
         csv_price = normalize_price(converted)
 
-    tax_status = clean_text(record.get("tax_status"))
-    if tax_status not in ALLOWED_TAX:
-        raise ValidationError(f"第{index}条税务状态无效: {tax_status or '<空>'}")
+    tax_status = normalize_tax_status(record, index, tax_aliases)
 
     condition = normalize_condition(record, index)
 
@@ -404,6 +469,7 @@ def main() -> int:
         validate_payload_versions(payload, release_versions)
         product_map = load_product_map(args.product_map)
         brand_aliases = load_brand_aliases(args.alias_map)
+        tax_aliases = load_tax_aliases(args.tax_alias_map)
         grouped: dict[str, list[tuple[str, ...]]] = defaultdict(list)
         counts = {"eligible": 0, "needs_confirmation": 0, "excluded": 0}
 
@@ -416,7 +482,12 @@ def main() -> int:
             counts[eligibility] += 1
             if eligibility == "eligible":
                 filename, row = validate_eligible(
-                    record, index, payload, product_map, brand_aliases
+                    record,
+                    index,
+                    payload,
+                    product_map,
+                    brand_aliases,
+                    tax_aliases,
                 )
                 grouped[filename].append(row)
 

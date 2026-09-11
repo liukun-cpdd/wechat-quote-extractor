@@ -7,10 +7,11 @@ Before CSV generation, produce a JSON object with `versions` and `records`. Incl
 ```json
 {
   "versions": {
-    "skill_version": "0.3.2",
-    "ruleset_version": "2026-09-11.3",
+    "skill_version": "0.3.3",
+    "ruleset_version": "2026-09-11.4",
     "product_map_version": "2026-09-11.1",
-    "alias_map_version": "2026-09-11.2"
+    "alias_map_version": "2026-09-11.2",
+    "tax_map_version": "2026-09-11.1"
   },
   "conversion": {
     "usd_cny_rate": null,
@@ -44,6 +45,7 @@ Before CSV generation, produce a JSON object with `versions` and `records`. Incl
       "price": "2650",
       "currency": "CNY",
       "converted_price_cny": null,
+      "tax_status_raw": "含税",
       "tax_status": "含税",
       "condition_raw": null,
       "condition_classification": "missing",
@@ -104,7 +106,8 @@ This object proves only that the current row was reviewed. It does not authorize
 | `price` | string, number, or null | Positive per-item source price |
 | `currency` | string or null | `CNY`, `USD`, or null; unmarked input becomes `CNY` |
 | `converted_price_cny` | string, number, or null | Preview or audit value; recomputed by the generator |
-| `tax_status` | string or null | `含税`, `未税` |
+| `tax_status_raw` | string or null | Literal tax expression such as `含税`, `未税`, or `WS`; internal only |
+| `tax_status` | string or null | Normalized `含税` or `未税` |
 | `condition_raw` | string or null | Literal condition expression; internal only |
 | `condition_classification` | string | `explicit_new`, `explicit_not_new`, `missing`, or `ambiguous` |
 | `condition` | string or null | Normalized `全新`, `拆机`, or null |
@@ -150,6 +153,12 @@ When `match_method` is `confirmed_alias`, the pair `brand_raw` and `brand_normal
 
 An unlisted expression may use `user_confirmed` for the current batch after the user selects one existing mapped product. It must not be labeled `confirmed_alias`
 
+## Tax alias contract
+
+Preserve the literal source token in `tax_status_raw`. Normalize an exact standard value directly, or use a `confirmed` row from [tax-alias-map.csv](tax-alias-map.csv). Alias matching is case-insensitive
+
+`WS` normalizes to `未税`. An unlisted tax abbreviation cannot become eligible until it is resolved; do not infer a permanent tax alias from one quote
+
 ## USD eligibility
 
 For an eligible USD record, warehouse or region must identify Hong Kong. The batch `conversion` object must contain
@@ -170,7 +179,7 @@ The generator recomputes `price × rate × 1.13` and rounds to a whole yuan with
 | `日期时间` | `quote_datetime` |
 | `产品名型号` | Mapped `product_name` |
 | `报价` | CNY price, or recomputed and rounded CNY result for USD |
-| `税务状态` | `tax_status` |
+| `税务状态` | Normalized `tax_status` |
 | `货况` | `condition`, empty when null |
 
 CSV contains exactly those five columns in that order. Direction, quantity, warehouse, year, batch, candidates, confirmation, feedback, and versions never enter CSV

@@ -85,6 +85,25 @@ This contains an explicit purchase price and may become market evidence after pa
 
 This has no concrete price and cannot enter the market CSV
 
+## Tax-status abbreviation and adjacent numbers
+
+```text
+镁光64G 3200 28条 WS 4200
+```
+
+Expected literal extraction
+
+| Field | Value |
+|---|---|
+| Product candidate | `镁光 64G 3200` |
+| Quantity | `28条` |
+| `tax_status_raw` | `WS` |
+| Normalized `tax_status` | `未税` |
+| Price candidate | `4200` CNY |
+| Condition | Missing; keep empty |
+
+`WS` is a confirmed tax alias and matches case-insensitively. This standalone line does not by itself establish sell or purchase direction; inherit direction from valid surrounding context or ask for it before CSV generation
+
 ## Multi-category input
 
 Parse all candidates first, then group eligible rows by category. Do not create one file per sentence

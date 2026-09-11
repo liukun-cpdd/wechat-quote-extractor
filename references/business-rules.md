@@ -18,7 +18,7 @@ Current market categories
 Keep the four layers separate
 
 1. Stable constraints control price validity, currency conversion, CSV fields, grouping, and authorization boundaries
-2. Replaceable dictionaries contain importable products and reviewed brand aliases
+2. Replaceable dictionaries contain importable products and reviewed brand or tax aliases
 3. Model judgment interprets natural language, detects likely typos or shorthand, and proposes candidates
 4. Deterministic validation enforces dictionary identity, release versions, conversion evidence, and the CSV contract
 
@@ -155,7 +155,10 @@ Do not generate a USD-derived row when Hong Kong location is unconfirmed or any 
 
 ## Tax, condition, and time
 
-- Tax status accepts `含税` or `未税`; missing tax status requires confirmation
+- Tax status written to CSV accepts only `含税` or `未税`; missing tax status requires confirmation
+- Preserve literal tax wording in `tax_status_raw`, then normalize only exact standard values or `confirmed` mappings from [tax-alias-map.csv](tax-alias-map.csv)
+- `WS` is a confirmed alias for `未税`; apply it case-insensitively
+- Keep quantity and price signals separate from nearby tax aliases. In `镁光64G 3200 28条 WS 4200`, `28条` is quantity, `WS` is `未税`, and `4200` is the price candidate
 - For GPU, CPU, and memory, the normalized condition accepts only `全新`, `拆机`, or empty
 - Classify condition by meaning rather than by an exhaustive term list
 - Use `explicit_new` and normalize to `全新` only when the wording clearly states that the item is brand-new
@@ -177,7 +180,7 @@ Do not generate a hard-disk CSV until the real category code and import template
 
 ## Version and feedback isolation
 
-Every batch must copy the four values from [release-manifest.json](release-manifest.json). The generator rejects batches built against a different Skill, ruleset, product map, or alias map version
+Every batch must copy all values from [release-manifest.json](release-manifest.json). The generator rejects batches built against a different Skill, ruleset, product map, brand-alias map, or tax-alias map version
 
 Runtime confirmation applies only to that batch. Keep feedback transient unless the user explicitly requests an export. Shared behavior changes only after reviewed edits, tests, a Git commit, a release tag, and redistribution according to [release-process.md](release-process.md)
 

@@ -59,6 +59,7 @@ class BuildImportCsvTests(unittest.TestCase):
             "confirmation": None,
             "price": "2650",
             "currency": "CNY",
+            "tax_status_raw": "含税",
             "tax_status": "含税",
             "condition_raw": None,
             "condition_classification": "missing",
@@ -105,6 +106,52 @@ class BuildImportCsvTests(unittest.TestCase):
         with (output_dir / "26-09-11_memory.csv").open(encoding="utf-8", newline="") as handle:
             rows = list(csv.reader(handle))
         self.assertEqual(rows[1][1], "镁光 32G 2933")
+
+    def test_ws_is_a_case_insensitive_untaxed_alias(self) -> None:
+        for raw_tax in ["WS", "ws", "Ws"]:
+            with self.subTest(raw_tax=raw_tax):
+                payload = {
+                    "versions": self.versions,
+                    "records": [
+                        self.record(
+                            brand_raw="镁光",
+                            brand_normalized="镁光",
+                            product_name="镁光 64G 3200",
+                            matched_product_id="31",
+                            price="4200",
+                            quantity="28条",
+                            tax_status_raw=raw_tax,
+                            tax_status=raw_tax,
+                        )
+                    ],
+                }
+                result, output_dir, temp_dir = self.run_build(payload)
+                self.addCleanup(temp_dir.cleanup)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                with (output_dir / "26-09-11_memory.csv").open(
+                    encoding="utf-8", newline=""
+                ) as handle:
+                    rows = list(csv.reader(handle))
+                self.assertEqual(
+                    rows[1],
+                    ["26/09/11/14:30", "镁光 64G 3200", "4200", "未税", ""],
+                )
+
+    def test_unconfirmed_tax_abbreviation_is_rejected(self) -> None:
+        result, _, temp_dir = self.run_build(
+            {
+                "versions": self.versions,
+                "records": [
+                    self.record(
+                        tax_status_raw="WST",
+                        tax_status="WST",
+                    )
+                ],
+            }
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("税务状态无效", result.stderr)
 
     def test_semantically_non_new_conditions_normalize_to_disassembled(self) -> None:
         examples = [

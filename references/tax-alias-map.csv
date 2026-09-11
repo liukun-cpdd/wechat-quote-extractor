@@ -1,0 +1,2 @@
+alias,canonical_tax_status,status,version_added,note
+WS,未税,confirmed,0.3.3,业务方已确认的未税缩写

@@ -2,7 +2,7 @@
 name: wechat-quote-extractor
 description: Extract structured market quotes from pasted Chinese hardware offer or purchase text, propose reviewable corrections for likely brand or model variants, and generate validated category CSV files for the existing market import workflow. Use for 微信报价整理、行情报价识别、采购价或售价提取、以及 GPU、CPU、内存和硬盘行情导入准备，不用于联系人或聊天记录管理
 metadata:
-  version: "0.3.2"
+  version: "0.3.3"
 ---
 
 # WeChat Quote Extractor
@@ -19,7 +19,9 @@ Read [product-model-map.csv](references/product-model-map.csv) when resolving a 
 
 Read [brand-alias-map.csv](references/brand-alias-map.csv) when normalizing brands. Only mappings marked `confirmed` may be applied automatically
 
-Read [release-manifest.json](references/release-manifest.json) before building a batch. Copy all four version values into the structured batch
+Read [tax-alias-map.csv](references/tax-alias-map.csv) when normalizing tax wording. Only mappings marked `confirmed` may be applied automatically
+
+Read [release-manifest.json](references/release-manifest.json) before building a batch. Copy all version values into the structured batch
 
 Read [examples.md](references/examples.md) when the source contains paragraph defaults, abbreviations, probable typos, purchase prices, USD, quantities, years, DC markers, kits, or unrelated products
 
@@ -42,7 +44,7 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 ## Decision boundary
 
 - The model may recognize varied wording and propose candidates; it may not invent a product, brand, price, tax status, or mapping
-- Automatic normalization is limited to formatting differences and confirmed entries in `brand-alias-map.csv`
+- Automatic normalization is limited to formatting differences and confirmed entries in the relevant alias map
 - A likely correction that changes brand or model identity requires user confirmation for the current batch
 - Current-batch confirmation may produce an eligible row only when it resolves to one existing `product_id`
 - A runtime correction is feedback, not a dictionary update. Never edit this Skill because a user accepts one suggestion during extraction
@@ -51,6 +53,7 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 ## Stable import constraints
 
 - Unmarked currency is CNY
+- `WS` is a confirmed tax-status alias for `未税`; matching is case-insensitive
 - Use paste time when the source has no explicit quote time
 - Missing condition is allowed and produces an empty `货况` cell
 - For GPU, CPU, and memory, the only non-empty output conditions are `全新` and `拆机`. Classify an explicit condition semantically: clearly brand-new is `全新`; any wording that clearly indicates the item is not brand-new is `拆机`. Terms such as `二手`, `拆新`, `拆机新`, `翻新`, and percentage-new descriptions are examples, not an exhaustive list
