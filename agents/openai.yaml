@@ -1,0 +1,7 @@
+interface:
+  display_name: "微信报价整理"
+  short_description: "识别微信硬件报价文本并生成可预检的分类行情导入CSV文件"
+  default_prompt: "Use $wechat-quote-extractor to extract market quotes from the pasted text and prepare import-ready CSV files."
+policy:
+  allow_implicit_invocation: true
+
