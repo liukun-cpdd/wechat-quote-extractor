@@ -7,8 +7,8 @@ Before CSV generation, produce a JSON object with `versions` and `records`. Incl
 ```json
 {
   "versions": {
-    "skill_version": "0.3.1",
-    "ruleset_version": "2026-09-11.2",
+    "skill_version": "0.3.2",
+    "ruleset_version": "2026-09-11.3",
     "product_map_version": "2026-09-11.1",
     "alias_map_version": "2026-09-11.2"
   },
@@ -46,6 +46,7 @@ Before CSV generation, produce a JSON object with `versions` and `records`. Incl
       "converted_price_cny": null,
       "tax_status": "含税",
       "condition_raw": null,
+      "condition_classification": "missing",
       "condition": null,
       "quantity": null,
       "price_unit": null,
@@ -104,8 +105,9 @@ This object proves only that the current row was reviewed. It does not authorize
 | `currency` | string or null | `CNY`, `USD`, or null; unmarked input becomes `CNY` |
 | `converted_price_cny` | string, number, or null | Preview or audit value; recomputed by the generator |
 | `tax_status` | string or null | `含税`, `未税` |
-| `condition_raw` | string or null | Literal condition expression such as `拆机新` or `九成新`; internal only |
-| `condition` | string or null | Normalized `全新`, `拆机`, or null; `拆新`, `拆机新`, and percentage-new expressions normalize to `拆机` |
+| `condition_raw` | string or null | Literal condition expression; internal only |
+| `condition_classification` | string | `explicit_new`, `explicit_not_new`, `missing`, or `ambiguous` |
+| `condition` | string or null | Normalized `全新`, `拆机`, or null |
 | `quantity` | string, number, or null | Internal only |
 | `price_unit` | string or null | Internal only |
 | `eligibility` | string | `eligible`, `needs_confirmation`, `excluded` |
@@ -133,11 +135,14 @@ An `eligible` record must have
 - Currency `CNY` or `USD`
 - Tax status `含税` or `未税`
 - Condition normalized to `全新`, `拆机`, or null
+- Condition classification consistent with raw wording and normalized output
 - No unresolved issue
 
 A proposed correction cannot be eligible before confirmation. An unsupported hard-disk row, masked price, missing price, unresolved product, or missing required field cannot be eligible
 
-Missing condition is allowed. DC, year, batch, warehouse, and region do not block an otherwise valid CNY row
+`explicit_new` writes `全新`; `explicit_not_new` writes `拆机`; `missing` writes an empty cell. `ambiguous` cannot be eligible until the user clarifies the condition
+
+The model determines whether arbitrary wording clearly means not brand-new. Do not require the wording to appear in a fixed alias list. Missing condition is allowed. DC, year, batch, warehouse, and region do not block an otherwise valid CNY row
 
 ## Confirmed alias contract
 

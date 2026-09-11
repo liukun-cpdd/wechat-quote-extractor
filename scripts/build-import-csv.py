@@ -20,11 +20,12 @@ HEADERS = ["日期时间", "产品名型号", "报价", "税务状态", "货况"
 CATEGORY_CODES = {"gpu": "gpu", "cpu": "cpu", "memory": "memory"}
 ALLOWED_DIRECTIONS = {"sell", "purchase"}
 ALLOWED_TAX = {"含税", "未税"}
-ALLOWED_CONDITIONS = {"", "全新", "拆机"}
-DISASSEMBLED_CONDITION_ALIASES = {"拆新", "拆机新", "几成新"}
-PERCENT_NEW_CONDITION_PATTERN = re.compile(
-    r"^(?:[一二三四五六七八九十两百零\d]+(?:\.\d+)?)成新$"
-)
+ALLOWED_CONDITION_CLASSIFICATIONS = {
+    "explicit_new",
+    "explicit_not_new",
+    "missing",
+    "ambiguous",
+}
 ALLOWED_MATCH_METHODS = {
     "exact",
     "format_normalized",
@@ -129,17 +130,29 @@ def normalize_price(value: Any) -> str:
     return normalized
 
 
-def normalize_condition(value: Any, index: int) -> str:
-    raw = clean_text(value)
-    compact = re.sub(r"\s+", "", raw)
-    if compact in ALLOWED_CONDITIONS:
-        return compact
-    if (
-        compact in DISASSEMBLED_CONDITION_ALIASES
-        or PERCENT_NEW_CONDITION_PATTERN.fullmatch(compact)
-    ):
-        return "拆机"
-    raise ValidationError(f"第{index}条货况无效: {raw or '<空>'}")
+def normalize_condition(record: dict[str, Any], index: int) -> str:
+    raw = clean_text(record.get("condition_raw"))
+    value = clean_text(record.get("condition"))
+    classification = clean_text(record.get("condition_classification"))
+    if classification not in ALLOWED_CONDITION_CLASSIFICATIONS:
+        raise ValidationError(
+            f"第{index}条condition_classification无效: {classification or '<空>'}"
+        )
+    if classification == "missing":
+        if raw or value:
+            raise ValidationError(f"第{index}条货况分类为missing但仍包含货况值")
+        return ""
+    if classification == "ambiguous":
+        raise ValidationError(f"第{index}条货况语义仍有歧义，不能进入CSV")
+    if not raw:
+        raise ValidationError(f"第{index}条明确货况缺少condition_raw")
+    if classification == "explicit_new":
+        if value not in {"", "全新"}:
+            raise ValidationError(f"第{index}条全新分类与货况值冲突")
+        return "全新"
+    if value == "全新":
+        raise ValidationError(f"第{index}条非全新分类与货况值冲突")
+    return "拆机"
 
 
 def validate_datetime(value: Any) -> tuple[str, str]:
@@ -347,7 +360,7 @@ def validate_eligible(
     if tax_status not in ALLOWED_TAX:
         raise ValidationError(f"第{index}条税务状态无效: {tax_status or '<空>'}")
 
-    condition = normalize_condition(record.get("condition"), index)
+    condition = normalize_condition(record, index)
 
     row = (quote_datetime, product_name, csv_price, tax_status, condition)
     return f"{file_date}_{CATEGORY_CODES[category]}.csv", row

@@ -60,6 +60,8 @@ class BuildImportCsvTests(unittest.TestCase):
             "price": "2650",
             "currency": "CNY",
             "tax_status": "含税",
+            "condition_raw": None,
+            "condition_classification": "missing",
             "condition": None,
             "eligibility": "eligible",
             "issues": [],
@@ -104,8 +106,20 @@ class BuildImportCsvTests(unittest.TestCase):
             rows = list(csv.reader(handle))
         self.assertEqual(rows[1][1], "镁光 32G 2933")
 
-    def test_disassembly_like_conditions_normalize_to_disassembled(self) -> None:
-        for raw_condition in ["拆新", "拆机新", "几成新", "九成新", "9成新", "9.5 成新"]:
+    def test_semantically_non_new_conditions_normalize_to_disassembled(self) -> None:
+        examples = [
+            "二手",
+            "旧货",
+            "翻新",
+            "开封使用",
+            "拆新",
+            "拆机新",
+            "几成新",
+            "九成新",
+            "9成新",
+            "9.5 成新",
+        ]
+        for raw_condition in examples:
             with self.subTest(raw_condition=raw_condition):
                 result, output_dir, temp_dir = self.run_build(
                     {
@@ -113,6 +127,7 @@ class BuildImportCsvTests(unittest.TestCase):
                         "records": [
                             self.record(
                                 condition_raw=raw_condition,
+                                condition_classification="explicit_not_new",
                                 condition=raw_condition,
                             )
                         ],
@@ -126,13 +141,43 @@ class BuildImportCsvTests(unittest.TestCase):
                     rows = list(csv.reader(handle))
                 self.assertEqual(rows[1][4], "拆机")
 
-    def test_unknown_condition_is_rejected(self) -> None:
+    def test_explicit_new_condition_writes_new(self) -> None:
+        result, output_dir, temp_dir = self.run_build(
+            {
+                "versions": self.versions,
+                "records": [
+                    self.record(
+                        condition_raw="全新",
+                        condition_classification="explicit_new",
+                        condition="全新",
+                    )
+                ],
+            }
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with (output_dir / "26-09-11_memory.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(rows[1][4], "全新")
+
+    def test_ambiguous_condition_is_rejected(self) -> None:
         result, _, temp_dir = self.run_build(
-            {"versions": self.versions, "records": [self.record(condition="二手")]}
+            {
+                "versions": self.versions,
+                "records": [
+                    self.record(
+                        condition_raw="货况不详",
+                        condition_classification="ambiguous",
+                        condition=None,
+                    )
+                ],
+            }
         )
         self.addCleanup(temp_dir.cleanup)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("货况无效", result.stderr)
+        self.assertIn("货况语义仍有歧义", result.stderr)
 
     def test_user_confirmed_typo_requires_current_batch_evidence(self) -> None:
         record = self.record(
@@ -150,6 +195,8 @@ class BuildImportCsvTests(unittest.TestCase):
                 "confirmed_at": "26/09/11/14:35",
             },
             price="25800",
+            condition_raw="拆机",
+            condition_classification="explicit_not_new",
             condition="拆机",
         )
         result, output_dir, temp_dir = self.run_build({"versions": self.versions, "records": [record]})

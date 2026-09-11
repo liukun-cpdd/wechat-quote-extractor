@@ -105,17 +105,18 @@ If one inseparable bundle price covers multiple categories, exclude it or ask fo
 
 ## Condition normalization
 
-For GPU, CPU, and memory, preserve the raw expression and normalize the final condition as follows
+For GPU, CPU, and memory, preserve the raw expression, classify its meaning, and normalize the final condition as follows
 
-| Raw expression | `condition_raw` | Final `condition` |
+| Raw expression | Classification | Final `condition` |
 |---|---|---|
-| `全新` | `全新` | `全新` |
-| `拆机` | `拆机` | `拆机` |
-| `拆新` | `拆新` | `拆机` |
-| `拆机新` | `拆机新` | `拆机` |
-| `几成新` | `几成新` | `拆机` |
-| `九成新`, `9成新` | Original wording | `拆机` |
-| No condition wording | null | null |
+| `全新` | `explicit_new` | `全新` |
+| `拆机`, `二手`, `旧货` | `explicit_not_new` | `拆机` |
+| `拆新`, `拆机新`, `翻新` | `explicit_not_new` | `拆机` |
+| `几成新`, `九成新`, `9成新` | `explicit_not_new` | `拆机` |
+| No condition wording | `missing` | null |
+| Wording mentions condition but does not establish new or non-new | `ambiguous` | Needs confirmation |
+
+These phrases are examples, not an allowlist. Any explicit wording that clearly indicates a non-brand-new state belongs to `explicit_not_new` and writes `拆机`
 
 Do not infer a condition from `现货`, warehouse, packaging, year, DC, or quantity
 

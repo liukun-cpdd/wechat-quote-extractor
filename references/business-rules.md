@@ -157,8 +157,11 @@ Do not generate a USD-derived row when Hong Kong location is unconfirmed or any 
 
 - Tax status accepts `含税` or `未税`; missing tax status requires confirmation
 - For GPU, CPU, and memory, the normalized condition accepts only `全新`, `拆机`, or empty
-- Normalize `拆新` and `拆机新` to `拆机`
-- Normalize a vague or specific percentage-new expression to `拆机`, including `几成新`, Chinese-numeral forms such as `九成新`, and digit forms such as `9成新`
+- Classify condition by meaning rather than by an exhaustive term list
+- Use `explicit_new` and normalize to `全新` only when the wording clearly states that the item is brand-new
+- Use `explicit_not_new` and normalize to `拆机` whenever the wording clearly states that the item is not brand-new. This includes used, disassembled, opened, refurbished, and percentage-new descriptions; examples such as `二手`, `旧货`, `拆新`, `拆机新`, `翻新`, `几成新`, `九成新`, and `9成新` are illustrative, not exhaustive
+- Use `missing` and leave condition empty when no condition wording appears
+- Use `ambiguous` and mark the record `needs_confirmation` only when condition wording appears but does not establish whether the item is brand-new
 - Preserve the literal source wording in `condition_raw`; write only the normalized `condition` to CSV
 - Do not infer condition from `现货`, warehouse, packaging, year, DC, or quantity
 - When the source has no explicit quote time, use the user's paste time as `quote_datetime`
