@@ -23,6 +23,7 @@ ALLOWED_TAX = {"含税", "未税"}
 ALLOWED_CONDITION_CLASSIFICATIONS = {
     "explicit_new",
     "explicit_not_new",
+    "memory_dc_default",
     "missing",
     "ambiguous",
 }
@@ -180,6 +181,12 @@ def normalize_condition(record: dict[str, Any], index: int) -> str:
         return ""
     if classification == "ambiguous":
         raise ValidationError(f"第{index}条货况语义仍有歧义，不能进入CSV")
+    if classification == "memory_dc_default":
+        if clean_text(record.get("category")) != "memory":
+            raise ValidationError(f"第{index}条仅内存可使用memory_dc_default货况规则")
+        if "全新" in raw or value not in {"", "拆机"}:
+            raise ValidationError(f"第{index}条DC默认拆机分类与货况值冲突")
+        return "拆机"
     if not raw:
         raise ValidationError(f"第{index}条明确货况缺少condition_raw")
     if classification == "explicit_new":
@@ -542,6 +549,21 @@ def write_csv(path: Path, rows: list[tuple[str, ...]]) -> None:
         raise ValidationError(f"无法写入CSV {path}: {exc}") from exc
 
 
+def deduplicate_rows(
+    rows: list[tuple[str, ...]],
+) -> tuple[list[tuple[str, ...]], int]:
+    unique_rows = []
+    seen = set()
+    duplicate_count = 0
+    for row in rows:
+        if row in seen:
+            duplicate_count += 1
+            continue
+        seen.add(row)
+        unique_rows.append(row)
+    return unique_rows, duplicate_count
+
+
 def main() -> int:
     args = parse_args()
     try:
@@ -575,16 +597,14 @@ def main() -> int:
 
         outputs = []
         total_written = 0
+        total_current_batch_duplicates = 0
         for filename, new_rows in sorted(grouped.items()):
+            unique_new_rows, current_batch_duplicates = deduplicate_rows(new_rows)
+            total_current_batch_duplicates += current_batch_duplicates
             prior_rows = []
             if args.existing_dir is not None:
                 prior_rows = read_existing(args.existing_dir / filename)
-            merged = []
-            seen = set()
-            for row in prior_rows + new_rows:
-                if row not in seen:
-                    seen.add(row)
-                    merged.append(row)
+            merged, _ = deduplicate_rows(prior_rows + unique_new_rows)
             output_path = args.output_dir / filename
             write_csv(output_path, merged)
             total_written += len(merged)
@@ -593,6 +613,8 @@ def main() -> int:
                     "path": str(output_path.resolve()),
                     "existing_rows": len(prior_rows),
                     "new_rows": len(new_rows),
+                    "new_unique_rows": len(unique_new_rows),
+                    "duplicate_rows_removed": current_batch_duplicates,
                     "written_rows": len(merged),
                 }
             )
@@ -602,6 +624,7 @@ def main() -> int:
                 {
                     "versions": release_versions,
                     "counts": counts,
+                    "duplicate_rows_removed": total_current_batch_duplicates,
                     "written_rows": total_written,
                     "outputs": outputs,
                 },

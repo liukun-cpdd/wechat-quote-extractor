@@ -106,7 +106,9 @@ The final `product_name` must equal the selected row's `csv_product_name` exactl
 
 For memory candidates, capacity and frequency are important matching signals. Recognize memory-layout tokens such as `2S2R4`, `2R4`, `2R8`, and `4DR4` only to separate source attributes. Do not append them to the final product name and discard them before the finalized batch
 
-Treat tokens such as `22年`, `2022年`, `25+`, `22+`, `DC21+`, and `DC26` as temporary year, DC, or batch signals. Do not add them to the product name, finalized batch, or CSV
+Treat tokens such as `22年`, `2022年`, `25+`, `22+`, `DC21+`, and `DC26` as possible temporary year, DC, or batch signals. Do not add them to the product name, finalized batch, or CSV
+
+For memory, DC may appear as an explicit form such as `DC22+` or as a short form such as `22` or `22+`. The likely value range is generally from the teens through `26`. These forms are recognition cues, not a fixed pattern list. Require memory-product context and semantic placement, and do not reinterpret capacity, frequency, quantity, or price as DC merely because its numeric value falls in that range
 
 Preserve warehouse and region in structured fields. They do not enter the five-column CSV and do not block an otherwise eligible CNY record
 
@@ -182,8 +184,11 @@ Do not generate a USD-derived row when Hong Kong location is unconfirmed or any 
 - Use `explicit_not_new` and normalize to `拆机` whenever the wording clearly states that the item is not brand-new. This includes used, disassembled, opened, refurbished, and percentage-new descriptions; examples such as `二手`, `旧货`, `拆新`, `拆机新`, `翻新`, `几成新`, `九成新`, and `9成新` are illustrative, not exhaustive
 - Use `missing` and leave condition empty when no condition wording appears
 - Use `ambiguous` and mark the record `needs_confirmation` only when condition wording appears but does not establish whether the item is brand-new
+- Memory DC exception: when a memory candidate contains a semantically recognizable DC or production-date signal and the applicable row or section does not explicitly state `全新`, use `memory_dc_default` and normalize condition to `拆机`
+- An explicit `全新` on the applicable memory row or inherited section overrides the DC default and remains `explicit_new`
+- Do not apply `memory_dc_default` to GPU, CPU, or a memory record without recognizable DC evidence
 - Preserve the literal source wording in `condition_raw`; write only the normalized `condition` to CSV
-- Do not infer condition from `现货`, warehouse, packaging, year, DC, or quantity
+- Except for the memory DC rule above, do not infer condition from `现货`, warehouse, packaging, year, DC, or quantity
 - When the source has no explicit quote time, use the user's paste time as `quote_datetime`
 - Preserve `direction` internally because the CSV cannot distinguish purchase from sell evidence
 
@@ -194,6 +199,10 @@ Only `eligible` records enter CSV. `needs_confirmation`, `excluded`, ignored unr
 One eligible row must have a supported category, exact mapped product ID and name, valid quote time, sell or purchase direction, exact positive price, tax status, allowed condition, no unresolved issue, compatible release versions, and any required current-batch confirmation evidence. An eligible CPU with an omitted source brand must also carry valid `model_inferred` evidence
 
 Do not generate a hard-disk CSV until the real category code and import template are confirmed
+
+After all normalization and conversion, deduplicate eligible rows within the current batch by the exact five CSV fields: `日期时间`, `产品名型号`, `报价`, `税务状态`, and `货况`. Keep the first occurrence and discard later identical rows. If any one field differs, preserve both rows
+
+Current-batch deduplication is automatic. Historical same-day CSV merging still requires the user's explicit choice and uses the same exact-five-field identity
 
 ## Version and feedback isolation
 
@@ -206,4 +215,3 @@ Runtime confirmation applies only to that batch. Keep feedback transient unless 
 Until confirmed, keep the affected operation out of the output
 
 - Hard-disk category code and import template
-- Whether same-day merging uses exact-five-field deduplication

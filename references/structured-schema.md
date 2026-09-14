@@ -9,8 +9,8 @@ The finalized batch is not a transcript archive. Extraction-only signals must be
 ```json
 {
   "versions": {
-    "skill_version": "0.4.0",
-    "ruleset_version": "2026-09-11.5",
+    "skill_version": "0.4.1",
+    "ruleset_version": "2026-09-14.1",
     "product_map_version": "2026-09-11.1",
     "alias_map_version": "2026-09-11.2",
     "tax_map_version": "2026-09-11.1"
@@ -124,7 +124,7 @@ This object proves only that the current row was reviewed. It does not authorize
 | `tax_status_raw` | string or null | Shortest decisive token such as `含税`, `未税`, or `WS`; never retain invoice-matching qualifiers here |
 | `tax_status` | string or null | Normalized `含税` or `未税` |
 | `condition_raw` | string or null | Literal condition expression used for validation |
-| `condition_classification` | string | `explicit_new`, `explicit_not_new`, `missing`, or `ambiguous` |
+| `condition_classification` | string | `explicit_new`, `explicit_not_new`, `memory_dc_default`, `missing`, or `ambiguous` |
 | `condition` | string or null | Normalized `全新`, `拆机`, or null |
 | `price_unit` | string or null | Price-unit evidence when needed to distinguish per-item price from a total |
 | `eligibility` | string | `eligible`, `needs_confirmation`, `excluded` |
@@ -173,7 +173,11 @@ An `eligible` record must have
 
 A proposed correction cannot be eligible before confirmation. An unsupported hard-disk row, masked price, missing price, unresolved product, or missing required field cannot be eligible
 
-`explicit_new` writes `全新`; `explicit_not_new` writes `拆机`; `missing` writes an empty cell. `ambiguous` cannot be eligible until the user clarifies the condition
+`explicit_new` writes `全新`; `explicit_not_new` and `memory_dc_default` write `拆机`; `missing` writes an empty cell. `ambiguous` cannot be eligible until the user clarifies the condition
+
+`memory_dc_default` is valid only for a memory candidate whose transient source analysis found a recognizable DC or production-date signal and no applicable explicit `全新` statement. DC cues may include `DC22+`, `22`, or `22+`, generally with values from the teens through `26`, but these are semantic hints rather than a fixed allowlist. The model must use memory context and numeric role to avoid mistaking capacity, frequency, quantity, or price for DC
+
+The finalized record retains only `condition_classification=memory_dc_default` and `condition=拆机`; it does not retain the DC expression itself
 
 The model determines whether arbitrary wording clearly means not brand-new. Do not require the wording to appear in a fixed alias list. Missing condition is allowed. Warehouse and region do not block an otherwise valid CNY row
 
@@ -230,6 +234,10 @@ Encoding and filename
 - `yy-MM-dd_category.csv`
 
 ## Merge contract
+
+Before writing each current-batch category file, deduplicate normalized rows by all five final CSV fields. Keep the first occurrence. The generator reports the number removed as `duplicate_rows_removed`
+
+Current-batch deduplication is automatic and does not require `--existing-dir`
 
 The script accepts `--existing-dir` only when the user explicitly chooses to merge
 

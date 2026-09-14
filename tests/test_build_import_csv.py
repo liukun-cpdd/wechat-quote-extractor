@@ -280,6 +280,46 @@ class BuildImportCsvTests(unittest.TestCase):
             rows = list(csv.reader(handle))
         self.assertEqual(rows[1][4], "全新")
 
+    def test_memory_dc_without_explicit_new_writes_disassembled(self) -> None:
+        result, output_dir, temp_dir = self.run_build(
+            {
+                "versions": self.versions,
+                "records": [
+                    self.record(
+                        condition_raw=None,
+                        condition_classification="memory_dc_default",
+                        condition="拆机",
+                    )
+                ],
+            }
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with (output_dir / "26-09-11_memory.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(rows[1][4], "拆机")
+
+    def test_memory_dc_default_is_rejected_for_non_memory_category(self) -> None:
+        result, _, temp_dir = self.run_build(
+            {
+                "versions": self.versions,
+                "records": [
+                    self.record(
+                        category="gpu",
+                        product_name="RTX 4090 24G 涡轮",
+                        matched_product_id="3904",
+                        condition_classification="memory_dc_default",
+                        condition="拆机",
+                    )
+                ],
+            }
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("仅内存可使用memory_dc_default", result.stderr)
+
     def test_ambiguous_condition_is_rejected(self) -> None:
         result, _, temp_dir = self.run_build(
             {
@@ -492,6 +532,48 @@ class BuildImportCsvTests(unittest.TestCase):
         with (output_dir / "26-09-11_memory.csv").open(encoding="utf-8", newline="") as handle:
             rows = list(csv.reader(handle))
         self.assertEqual(rows[1][2], "11280")
+
+    def test_current_batch_exact_final_rows_keep_only_first(self) -> None:
+        payload = {
+            "versions": self.versions,
+            "records": [
+                self.record(price="2650", tax_status_raw="含税", tax_status="含税"),
+                self.record(
+                    price="2650.00",
+                    tax_status_raw="含税不对应",
+                    tax_status="含税",
+                ),
+            ],
+        }
+        result, output_dir, temp_dir = self.run_build(payload)
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["counts"]["eligible"], 2)
+        self.assertEqual(output["duplicate_rows_removed"], 1)
+        self.assertEqual(output["outputs"][0]["new_rows"], 2)
+        self.assertEqual(output["outputs"][0]["new_unique_rows"], 1)
+        with (output_dir / "26-09-11_memory.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(len(rows), 2)
+
+    def test_rows_with_different_final_price_are_preserved(self) -> None:
+        payload = {
+            "versions": self.versions,
+            "records": [self.record(price="2650"), self.record(price="2651")],
+        }
+        result, output_dir, temp_dir = self.run_build(payload)
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(output["duplicate_rows_removed"], 0)
+        with (output_dir / "26-09-11_memory.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(len(rows), 3)
 
 
 if __name__ == "__main__":

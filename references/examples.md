@@ -164,7 +164,35 @@ For GPU, CPU, and memory, preserve the raw expression, classify its meaning, and
 
 These phrases are examples, not an allowlist. Any explicit wording that clearly indicates a non-brand-new state belongs to `explicit_not_new` and writes `拆机`
 
-Do not infer a condition from `现货`, warehouse, packaging, year, DC, or quantity
+Except for the memory DC rule below, do not infer condition from `现货`, warehouse, packaging, year, DC, or quantity
+
+## Memory DC condition default
+
+```text
+三星64G 4800 DC22+ 含税17000
+海力士64G 5600 22 含税18000
+镁光64G 4800 22+ 全新 含税17500
+```
+
+Expected interpretation
+
+| Candidate | DC interpretation | Final condition |
+|---|---|---|
+| 三星 64G 4800 | `DC22+` is explicit DC | `拆机` |
+| 海力士 64G 5600 | Bare `22` is DC from its memory-product position and context | `拆机` |
+| 镁光 64G 4800 | `22+` is DC, but the row explicitly says `全新` | `全新` |
+
+Short forms such as `22` or `22+`, generally in the teens through `26`, are prompts for semantic recognition rather than a hard-coded list. Do not treat a nearby price, quantity, capacity, or frequency as DC solely because it falls within that range
+
+After condition resolution, discard the DC token. Use `condition_classification=memory_dc_default` for the first two rows and `explicit_new` for the third
+
+## Current-batch duplicate removal
+
+If two cleaned candidates normalize to the same date-time, mapped product name, CNY price, tax status, and condition, keep only the first CSV row
+
+For example, `2650` and `2650.00` become the same price, and `含税` and `含税不对应` both become `含税`. When all other final CSV fields also match, the second row is removed as a duplicate
+
+A different price, tax status, condition, mapped product, or date-time remains a separate row. Historical-file merging is still performed only when the user explicitly supplies `--existing-dir`
 
 ## Hong Kong USD conversion
 
