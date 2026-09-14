@@ -159,19 +159,35 @@ snapshots/
 
 ## 快速使用
 
-将本仓库放入 Codex Skills 目录：
+### 让 Codex 自动安装
+
+复制下面这段提示词发送给 Codex，它会从本仓库下载并安装对应的 Skill：
+
+```text
+请从以下 GitHub 仓库下载并安装对应的 Skill：
+https://github.com/liukun-cpdd/wechat-quote-extractor
+```
+
+安装过程中，如果 Codex 请求网络访问或写入本地 Skills 目录，请在确认仓库地址无误后授权
+
+### 手动安装
+
+也可以将本仓库克隆或复制到 Codex Skills 目录：
 
 ```text
 ~/.codex/skills/wechat-quote-extractor/
 ```
 
-在 Codex 中调用：
+### 在 Codex 中调用
 
-```text
-请使用 $wechat-quote-extractor 处理以下硬件报价，并在生成 CSV 前给我完整预览
+1. 在 Codex 输入框中输入 `/`，唤出可用的 Skill
+2. 输入“微信报价整理”进行查找
+3. 选择“微信报价整理”并确认
+4. 直接粘贴需要处理的报价文本
+5. Codex 会先给出完整预览，并集中询问仍需确认的问题
+6. 生成 CSV 时，如果快照输出根目录尚未明确，Codex 会提示你选择或确认一个目录
 
-三星/SK 32G 4800 含税8200
-```
+快照根目录确认后，后续同日批次会自动从该目录中的当日最新快照继续累计，不需要每次重新选择
 
 确认结构化结果后，可运行确定性生成器：
 
