@@ -91,7 +91,7 @@ If the text could plausibly be an in-scope product written incorrectly, do not i
 采购 三星32G6400 未税 2600收100条
 ```
 
-This contains an explicit purchase price and may become market evidence after paste time is applied. Currency defaults to CNY and missing condition is allowed
+This contains an explicit purchase price and may become market evidence after paste time is applied. Currency defaults to CNY and the missing memory condition normalizes to `拆机`
 
 ```text
 采购 三星32G6400 未税 接有货麻烦带数量报价
@@ -113,7 +113,7 @@ Expected processing
 | Final product | `镁光 64G 3200` |
 | Final tax evidence | `tax_status_raw=WS`, `tax_status=未税` |
 | Final price | `4200` CNY |
-| Final condition | Missing; keep empty |
+| Final condition | No explicit `全新`; memory defaults to `拆机` |
 
 Discard `28条` before creating the finalized batch. `WS` is a confirmed tax alias and matches case-insensitively. This standalone line does not by itself establish sell or purchase direction; inherit direction from valid surrounding context or ask for it before CSV generation
 
@@ -147,7 +147,7 @@ If one inseparable bundle price covers multiple categories, exclude it or ask fo
 - `18x00` is a masked price and the row is excluded until replaced by an exact amount
 - `25+` is treated as a transient DC or batch signal and discarded before the finalized batch
 - `现货` does not imply `全新` or `拆机`
-- The second row may use an empty condition when all other fields are eligible
+- The second row has no explicit `全新`, so memory condition is `拆机`
 
 ## Condition normalization
 
@@ -159,14 +159,16 @@ For GPU, CPU, and memory, preserve the raw expression, classify its meaning, and
 | `拆机`, `二手`, `旧货` | `explicit_not_new` | `拆机` |
 | `拆新`, `拆机新`, `翻新` | `explicit_not_new` | `拆机` |
 | `几成新`, `九成新`, `9成新` | `explicit_not_new` | `拆机` |
-| No condition wording | `missing` | null |
-| Wording mentions condition but does not establish new or non-new | `ambiguous` | Needs confirmation |
+| CPU or memory with no condition wording | `missing` | `拆机` |
+| CPU or memory with ambiguous condition wording | `ambiguous` | `拆机` |
+| GPU with no condition wording | `missing` | null |
+| GPU with ambiguous condition wording | `ambiguous` | Needs confirmation |
 
 These phrases are examples, not an allowlist. Any explicit wording that clearly indicates a non-brand-new state belongs to `explicit_not_new` and writes `拆机`
 
-Except for the memory DC rule below, do not infer condition from `现货`, warehouse, packaging, year, DC, or quantity
+For CPU and memory, only an applicable explicit `全新` statement produces `全新`. Do not treat `现货`, warehouse, packaging, year, DC, or quantity as that statement
 
-## Memory DC condition default
+## Memory DC recognition
 
 ```text
 三星64G 4800 DC22+ 含税17000
@@ -178,21 +180,21 @@ Expected interpretation
 
 | Candidate | DC interpretation | Final condition |
 |---|---|---|
-| 三星 64G 4800 | `DC22+` is explicit DC | `拆机` |
-| 海力士 64G 5600 | Bare `22` is DC from its memory-product position and context | `拆机` |
+| 三星 64G 4800 | `DC22+` is explicit DC | `拆机` because no `全新` appears |
+| 海力士 64G 5600 | Bare `22` is DC from its memory-product position and context | `拆机` because no `全新` appears |
 | 镁光 64G 4800 | `22+` is DC, but the row explicitly says `全新` | `全新` |
 
 Short forms such as `22` or `22+`, generally in the teens through `26`, are prompts for semantic recognition rather than a hard-coded list. Do not treat a nearby price, quantity, capacity, or frequency as DC solely because it falls within that range
 
-After condition resolution, discard the DC token. Use `condition_classification=memory_dc_default` for the first two rows and `explicit_new` for the third
+After extraction, discard the DC token. The first two rows use `condition_classification=missing`; the third uses `explicit_new`
 
-## Current-batch duplicate removal
+## Daily snapshot duplicate removal
 
-If two cleaned candidates normalize to the same date-time, mapped product name, CNY price, tax status, and condition, keep only the first CSV row
+Use the latest earlier same-day snapshot as the only baseline. Carry its category files into the new timestamped directory and merge the current batch into affected categories
 
-For example, `2650` and `2650.00` become the same price, and `含税` and `含税不对应` both become `含税`. When all other final CSV fields also match, the second row is removed as a duplicate
+For example, `2650` and `2650.00` become the same price, and `含税` and `含税不对应` both become `含税`. When product, normalized price, tax status, and condition match, they represent one quote even if their date-times differ
 
-A different price, tax status, condition, mapped product, or date-time remains a separate row. Historical-file merging is still performed only when the user explicitly supplies `--existing-dir`
+Retain the row with the earlier date-time. A different product, price, tax status, or condition remains separate. A different date-time alone does not create a separate quote
 
 ## Hong Kong USD conversion
 

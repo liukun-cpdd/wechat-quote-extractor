@@ -2,15 +2,16 @@
 
 ## Batch object
 
-Before CSV generation, produce a JSON object with `versions` and finalized `records`. Include `conversion` only when needed. `feedback` is optional and transient
+Before CSV generation, produce a JSON object with `batch_datetime`, `versions`, and finalized `records`. Include `conversion` only when needed. `feedback` is optional and transient
 
 The finalized batch is not a transcript archive. Extraction-only signals must be discarded before this object is produced
 
 ```json
 {
+  "batch_datetime": "26/09/14/14:30:00",
   "versions": {
-    "skill_version": "0.4.1",
-    "ruleset_version": "2026-09-14.1",
+    "skill_version": "0.5.0",
+    "ruleset_version": "2026-09-14.2",
     "product_map_version": "2026-09-11.1",
     "alias_map_version": "2026-09-11.2",
     "tax_map_version": "2026-09-11.1"
@@ -61,6 +62,8 @@ The finalized batch is not a transcript archive. Extraction-only signals must be
 ```
 
 Copy version values exactly from [release-manifest.json](release-manifest.json). Do not infer or increment them while processing a quote
+
+`batch_datetime` is the user's paste or processing time in `yy/MM/dd/HH:mm:ss`. It determines the snapshot date and timestamped output directory. Every eligible record in the batch must have the same calendar date
 
 ## Extraction-only signals
 
@@ -124,7 +127,7 @@ This object proves only that the current row was reviewed. It does not authorize
 | `tax_status_raw` | string or null | Shortest decisive token such as `含税`, `未税`, or `WS`; never retain invoice-matching qualifiers here |
 | `tax_status` | string or null | Normalized `含税` or `未税` |
 | `condition_raw` | string or null | Literal condition expression used for validation |
-| `condition_classification` | string | `explicit_new`, `explicit_not_new`, `memory_dc_default`, `missing`, or `ambiguous` |
+| `condition_classification` | string | `explicit_new`, `explicit_not_new`, `missing`, or `ambiguous` |
 | `condition` | string or null | Normalized `全新`, `拆机`, or null |
 | `price_unit` | string or null | Price-unit evidence when needed to distinguish per-item price from a total |
 | `eligibility` | string | `eligible`, `needs_confirmation`, `excluded` |
@@ -173,13 +176,9 @@ An `eligible` record must have
 
 A proposed correction cannot be eligible before confirmation. An unsupported hard-disk row, masked price, missing price, unresolved product, or missing required field cannot be eligible
 
-`explicit_new` writes `全新`; `explicit_not_new` and `memory_dc_default` write `拆机`; `missing` writes an empty cell. `ambiguous` cannot be eligible until the user clarifies the condition
+`explicit_new` writes `全新` and `explicit_not_new` writes `拆机`. For CPU and memory, `missing` and `ambiguous` also write `拆机`; for GPU, `missing` writes an empty cell and `ambiguous` cannot be eligible until clarified
 
-`memory_dc_default` is valid only for a memory candidate whose transient source analysis found a recognizable DC or production-date signal and no applicable explicit `全新` statement. DC cues may include `DC22+`, `22`, or `22+`, generally with values from the teens through `26`, but these are semantic hints rather than a fixed allowlist. The model must use memory context and numeric role to avoid mistaking capacity, frequency, quantity, or price for DC
-
-The finalized record retains only `condition_classification=memory_dc_default` and `condition=拆机`; it does not retain the DC expression itself
-
-The model determines whether arbitrary wording clearly means not brand-new. Do not require the wording to appear in a fixed alias list. Missing condition is allowed. Warehouse and region do not block an otherwise valid CNY row
+The model determines whether arbitrary wording explicitly means brand-new or non-new. Do not require wording to appear in a fixed alias list. Warehouse and region do not block an otherwise valid CNY row
 
 ## Confirmed alias contract
 
@@ -233,16 +232,10 @@ Encoding and filename
 - One file per date and category
 - `yy-MM-dd_category.csv`
 
-## Merge contract
+## Snapshot contract
 
-Before writing each current-batch category file, deduplicate normalized rows by all five final CSV fields. Keep the first occurrence. The generator reports the number removed as `duplicate_rows_removed`
+The generator requires `--snapshot-root <confirmed-root>` and creates `yy-MM-dd_HH-mm-ss` beneath it. Its result reports `snapshot_directory`, `baseline_directory`, and `first_snapshot_of_day`
 
-Current-batch deduplication is automatic and does not require `--existing-dir`
+The baseline is either null for the day's first batch or exactly one latest earlier same-day snapshot. Every inherited CSV must pass the five-column contract before the new directory is created
 
-The script accepts `--existing-dir` only when the user explicitly chooses to merge
-
-- Load only the same output filename from the existing directory
-- Require the exact five-column header
-- Remove only rows whose five CSV fields are identical
-- Preserve rows when any field differs
-- Never merge across dates
+The deduplication key is the four-tuple `(产品名型号, 报价, 税务状态, 货况)`. When duplicate keys exist, retain the row with the earliest valid `日期时间`. `duplicate_rows_removed` reports discarded rows

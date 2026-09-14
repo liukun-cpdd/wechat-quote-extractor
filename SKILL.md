@@ -2,7 +2,7 @@
 name: wechat-quote-extractor
 description: Extract structured market quotes from pasted Chinese hardware offer or purchase text, propose reviewable corrections for likely brand or model variants, and generate validated category CSV files for the existing market import workflow. Use for 微信报价整理、行情报价识别、采购价或售价提取、以及 GPU、CPU、内存和硬盘行情导入准备，不用于联系人或聊天记录管理
 metadata:
-  version: "0.4.1"
+  version: "0.5.0"
 ---
 
 # WeChat Quote Extractor
@@ -35,12 +35,12 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 4. Resolve product identity using the product map, confirmed alias map, source attributes, and semantic judgment. For a CPU without an explicit brand, infer Intel or AMD from the complete model expression before matching the map
 5. If the wording is likely a typo, shorthand, or unconfirmed alias, propose mapped candidates with reasons. Do not silently replace the source wording
 6. Ignore clearly unrelated products. Do not retain or ask about them unless the user requests a full audit
-7. Use transient DC or production-date signals to apply the memory condition rule, then discard extraction-only quantity, year, DC, batch, memory-layout, warranty, packing, and invoice-correspondence signals
-8. Classify relevant candidates as `eligible`, `needs_confirmation`, or `excluded`, remove exact duplicate final five-field rows from the current batch, and show one complete preview
+7. Discard extraction-only quantity, year, DC, batch, memory-layout, warranty, packing, and invoice-correspondence signals
+8. Classify relevant candidates as `eligible`, `needs_confirmation`, or `excluded`, then show one complete preview
 9. Ask all material clarification questions together. A user's answer may resolve only the current batch; it must not modify Skill files or shared dictionaries
 10. Rebuild the preview after confirmation and run deterministic validation
-11. Generate CSV files from `eligible` records with `scripts/build-import-csv.py`
-12. Return generated files plus counts of eligible, pending, excluded, duplicates removed, and written records
+11. Generate a complete timestamped daily snapshot from `eligible` records with `scripts/build-import-csv.py`
+12. Return the snapshot path plus counts of eligible, pending, excluded, duplicates removed, and written records
 
 ## Decision boundary
 
@@ -60,10 +60,9 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 - Tax status means only whether the quoted price includes tax. Any positive phrase containing `含税`, including invoice-mismatch wording, normalizes to `含税`; invoice correspondence is discarded
 - Do not infer tax status when no explicit `含税`, `未税`, `不含税`, or confirmed tax alias appears
 - Use paste time when the source has no explicit quote time
-- Missing condition is allowed and produces an empty `货况` cell
-- For GPU, CPU, and memory, the only non-empty output conditions are `全新` and `拆机`. Classify an explicit condition semantically: clearly brand-new is `全新`; any wording that clearly indicates the item is not brand-new is `拆机`. Terms such as `二手`, `拆新`, `拆机新`, `翻新`, and percentage-new descriptions are examples, not an exhaustive list
-- Keep condition empty when the source gives no condition. Use `needs_confirmation` only when condition wording exists but does not establish whether the item is brand-new
-- Exception for memory: when the source contains a recognizable DC or production-date expression and does not explicitly state `全新`, normalize condition to `拆机`. Forms such as `DC22+`, `22`, and `22+`, usually within the teens through `26`, are semantic cues rather than a fixed allowlist; use memory context and nearby wording to avoid confusing price, capacity, frequency, or quantity with DC
+- For CPU and memory, write `全新` only when the applicable source explicitly states `全新`; otherwise write `拆机`
+- For GPU, explicit brand-new wording writes `全新`, explicit non-new wording writes `拆机`, missing condition remains empty, and ambiguous condition requires confirmation
+- DC forms such as `DC22+`, `22`, and `22+` remain semantic extraction cues only; do not retain them or use them to override an explicit `全新`
 - A price with `x` or `X` replacing digits is invalid; multiplication such as `25800*10张` is not masking
 - Explicit sell and purchase prices can be market evidence; a request for a quote without a concrete price cannot
 - USD located in Hong Kong is converted with the official applicable USD/CNY central parity rate multiplied by `1.13`, then rounded to a whole yuan using decimal half-up
@@ -73,17 +72,13 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 
 ## CSV generation
 
-Prepare a UTF-8 JSON file following [structured-schema.md](references/structured-schema.md), including versions from the release manifest, then run
+Prepare a UTF-8 JSON file following [structured-schema.md](references/structured-schema.md), including `batch_datetime` and versions from the release manifest. Confirm one snapshot root, then run
 
 ```powershell
-python scripts/build-import-csv.py --input <records.json> --output-dir <output-directory>
+python scripts/build-import-csv.py --input <records.json> --snapshot-root <confirmed-snapshot-root>
 ```
 
-Merge with an existing same-day category file only after the user explicitly confirms exact-five-field deduplication
-
-```powershell
-python scripts/build-import-csv.py --input <records.json> --output-dir <output-directory> --existing-dir <existing-csv-directory>
-```
+The generator creates a new time directory, inherits only the latest same-day snapshot, and starts fresh on a new date. Ask the user only when the snapshot root is unclear or the latest same-day baseline is not unique
 
 Refresh the product dictionary only as part of a reviewed release
 
@@ -99,10 +94,10 @@ CSV output contains exactly
 日期时间,产品名型号,报价,税务状态,货况
 ```
 
-Use one file per date and category named `yy-MM-dd_category.csv`
+Each timestamped directory is a complete snapshot for that day. Inside it, use one file per category named `yy-MM-dd_category.csv`
 
 Do not include contacts, chat history, direction, warehouse, issues, candidates, confidence, feedback, or version fields in the CSV
 
 Quantity, year, batch, DC, memory layout, warranty, packaging, packing method, invoice correspondence, and invoice-description details are extraction-only. Do not retain them in the finalized structured batch or CSV
 
-Within each current batch, automatically keep only the first row when all five final CSV fields are identical. Different values in any CSV field remain separate records
+Deduplicate by `产品名型号`, `报价`, `税务状态`, and `货况`; `日期时间` is not part of the key. When the four fields match, retain the row with the earlier date-time

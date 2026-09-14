@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 
@@ -20,20 +21,26 @@ class BuildImportCsvTests(unittest.TestCase):
     def setUp(self) -> None:
         self.versions = json.loads(MANIFEST.read_text(encoding="utf-8"))
 
-    def run_build(self, payload: dict) -> tuple[subprocess.CompletedProcess[str], Path, tempfile.TemporaryDirectory[str]]:
-        temp_dir = tempfile.TemporaryDirectory()
-        root = Path(temp_dir.name)
-        input_path = root / "records.json"
-        output_dir = root / "output"
-        input_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    def run_build_in_root(
+        self, payload: dict, snapshot_root: Path
+    ) -> tuple[subprocess.CompletedProcess[str], Path]:
+        prepared = dict(payload)
+        prepared.setdefault("batch_datetime", "26/09/11/14:30:00")
+        snapshot_root.mkdir(parents=True, exist_ok=True)
+        batch_datetime = datetime.strptime(
+            prepared["batch_datetime"], "%y/%m/%d/%H:%M:%S"
+        )
+        snapshot_dir = snapshot_root / batch_datetime.strftime("%y-%m-%d_%H-%M-%S")
+        input_path = snapshot_root.parent / "records.json"
+        input_path.write_text(json.dumps(prepared, ensure_ascii=False), encoding="utf-8")
         result = subprocess.run(
             [
                 sys.executable,
                 str(SCRIPT),
                 "--input",
                 str(input_path),
-                "--output-dir",
-                str(output_dir),
+                "--snapshot-root",
+                str(snapshot_root),
             ],
             capture_output=True,
             text=True,
@@ -41,7 +48,13 @@ class BuildImportCsvTests(unittest.TestCase):
             env={**os.environ, "PYTHONUTF8": "1"},
             check=False,
         )
-        return result, output_dir, temp_dir
+        return result, snapshot_dir
+
+    def run_build(self, payload: dict) -> tuple[subprocess.CompletedProcess[str], Path, tempfile.TemporaryDirectory[str]]:
+        temp_dir = tempfile.TemporaryDirectory()
+        root = Path(temp_dir.name)
+        result, snapshot_dir = self.run_build_in_root(payload, root / "snapshots")
+        return result, snapshot_dir, temp_dir
 
     def record(self, **overrides: object) -> dict:
         value = {
@@ -91,7 +104,7 @@ class BuildImportCsvTests(unittest.TestCase):
         self.assertEqual(output["counts"], {"eligible": 1, "needs_confirmation": 0, "excluded": 1})
         with (output_dir / "26-09-11_memory.csv").open(encoding="utf-8", newline="") as handle:
             rows = list(csv.reader(handle))
-        self.assertEqual(rows[1], ["26/09/11/14:30", "海力士 32G 3200", "2650", "含税", ""])
+        self.assertEqual(rows[1], ["26/09/11/14:30", "海力士 32G 3200", "2650", "含税", "拆机"])
 
     def test_mt_is_a_confirmed_micron_alias(self) -> None:
         payload = {
@@ -140,7 +153,7 @@ class BuildImportCsvTests(unittest.TestCase):
                     rows = list(csv.reader(handle))
                 self.assertEqual(
                     rows[1],
-                    ["26/09/11/14:30", "镁光 64G 3200", "4200", "未税", ""],
+                    ["26/09/11/14:30", "镁光 64G 3200", "4200", "未税", "拆机"],
                 )
 
     def test_tax_inclusive_invoice_qualifiers_normalize_without_confirmation(self) -> None:
@@ -280,15 +293,15 @@ class BuildImportCsvTests(unittest.TestCase):
             rows = list(csv.reader(handle))
         self.assertEqual(rows[1][4], "全新")
 
-    def test_memory_dc_without_explicit_new_writes_disassembled(self) -> None:
+    def test_missing_memory_condition_defaults_to_disassembled(self) -> None:
         result, output_dir, temp_dir = self.run_build(
             {
                 "versions": self.versions,
                 "records": [
                     self.record(
                         condition_raw=None,
-                        condition_classification="memory_dc_default",
-                        condition="拆机",
+                        condition_classification="missing",
+                        condition=None,
                     )
                 ],
             }
@@ -301,24 +314,81 @@ class BuildImportCsvTests(unittest.TestCase):
             rows = list(csv.reader(handle))
         self.assertEqual(rows[1][4], "拆机")
 
-    def test_memory_dc_default_is_rejected_for_non_memory_category(self) -> None:
-        result, _, temp_dir = self.run_build(
+    def test_missing_cpu_condition_defaults_to_disassembled(self) -> None:
+        result, output_dir, temp_dir = self.run_build(
             {
                 "versions": self.versions,
                 "records": [
                     self.record(
-                        category="gpu",
-                        product_name="RTX 4090 24G 涡轮",
-                        matched_product_id="3904",
-                        condition_classification="memory_dc_default",
-                        condition="拆机",
+                        category="cpu",
+                        brand_raw="Intel",
+                        brand_normalized="Intel",
+                        brand_resolution_method="explicit",
+                        product_name="Intel 6430",
+                        matched_product_id="84",
+                        condition_classification="missing",
+                        condition=None,
                     )
                 ],
             }
         )
         self.addCleanup(temp_dir.cleanup)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("仅内存可使用memory_dc_default", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with (output_dir / "26-09-11_cpu.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(rows[1][4], "拆机")
+
+    def test_ambiguous_cpu_condition_defaults_to_disassembled(self) -> None:
+        result, output_dir, temp_dir = self.run_build(
+            {
+                "versions": self.versions,
+                "records": [
+                    self.record(
+                        category="cpu",
+                        brand_raw="Intel",
+                        brand_normalized="Intel",
+                        brand_resolution_method="explicit",
+                        product_name="Intel 6430",
+                        matched_product_id="84",
+                        condition_raw="货况不详",
+                        condition_classification="ambiguous",
+                        condition=None,
+                    )
+                ],
+            }
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with (output_dir / "26-09-11_cpu.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(rows[1][4], "拆机")
+
+    def test_missing_gpu_condition_remains_empty(self) -> None:
+        result, output_dir, temp_dir = self.run_build(
+            {
+                "versions": self.versions,
+                "records": [
+                    self.record(
+                        category="gpu",
+                        brand_raw=None,
+                        brand_normalized=None,
+                        product_name="RTX 4090 24G 涡轮",
+                        matched_product_id="3904",
+                    )
+                ],
+            }
+        )
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with (output_dir / "26-09-11_gpu.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(rows[1][4], "")
 
     def test_ambiguous_condition_is_rejected(self) -> None:
         result, _, temp_dir = self.run_build(
@@ -326,6 +396,11 @@ class BuildImportCsvTests(unittest.TestCase):
                 "versions": self.versions,
                 "records": [
                     self.record(
+                        category="gpu",
+                        brand_raw=None,
+                        brand_normalized=None,
+                        product_name="RTX 4090 24G 涡轮",
+                        matched_product_id="3904",
                         condition_raw="货况不详",
                         condition_classification="ambiguous",
                         condition=None,
@@ -533,12 +608,13 @@ class BuildImportCsvTests(unittest.TestCase):
             rows = list(csv.reader(handle))
         self.assertEqual(rows[1][2], "11280")
 
-    def test_current_batch_exact_final_rows_keep_only_first(self) -> None:
+    def test_current_batch_four_field_duplicates_keep_earlier_time(self) -> None:
         payload = {
             "versions": self.versions,
             "records": [
                 self.record(price="2650", tax_status_raw="含税", tax_status="含税"),
                 self.record(
+                    quote_datetime="26/09/11/14:35",
                     price="2650.00",
                     tax_status_raw="含税不对应",
                     tax_status="含税",
@@ -552,12 +628,12 @@ class BuildImportCsvTests(unittest.TestCase):
         self.assertEqual(output["counts"]["eligible"], 2)
         self.assertEqual(output["duplicate_rows_removed"], 1)
         self.assertEqual(output["outputs"][0]["new_rows"], 2)
-        self.assertEqual(output["outputs"][0]["new_unique_rows"], 1)
         with (output_dir / "26-09-11_memory.csv").open(
             encoding="utf-8", newline=""
         ) as handle:
             rows = list(csv.reader(handle))
         self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1][0], "26/09/11/14:30")
 
     def test_rows_with_different_final_price_are_preserved(self) -> None:
         payload = {
@@ -574,6 +650,213 @@ class BuildImportCsvTests(unittest.TestCase):
         ) as handle:
             rows = list(csv.reader(handle))
         self.assertEqual(len(rows), 3)
+
+    def test_same_day_snapshot_inherits_unmodified_categories(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        snapshot_root = Path(temp_dir.name) / "snapshots"
+
+        first_payload = {
+            "batch_datetime": "26/09/11/09:00:00",
+            "versions": self.versions,
+            "records": [self.record(quote_datetime="26/09/11/09:00")],
+        }
+        first, first_dir = self.run_build_in_root(first_payload, snapshot_root)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        memory_before = (first_dir / "26-09-11_memory.csv").read_bytes()
+
+        cpu_record = self.record(
+            quote_datetime="26/09/11/10:00",
+            category="cpu",
+            brand_raw="Intel",
+            brand_normalized="Intel",
+            brand_resolution_method="explicit",
+            product_name="Intel 6430",
+            matched_product_id="84",
+            price="12800",
+        )
+        second_payload = {
+            "batch_datetime": "26/09/11/10:00:00",
+            "versions": self.versions,
+            "records": [cpu_record],
+        }
+        second, second_dir = self.run_build_in_root(second_payload, snapshot_root)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        output = json.loads(second.stdout)
+        self.assertEqual(Path(output["baseline_directory"]), first_dir.resolve())
+        self.assertEqual((first_dir / "26-09-11_memory.csv").read_bytes(), memory_before)
+        self.assertEqual((second_dir / "26-09-11_memory.csv").read_bytes(), memory_before)
+        self.assertTrue((second_dir / "26-09-11_cpu.csv").exists())
+
+    def test_snapshot_uses_only_latest_same_day_baseline(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        snapshot_root = Path(temp_dir.name) / "snapshots"
+
+        first, first_dir = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/09:00:00",
+                "versions": self.versions,
+                "records": [self.record(quote_datetime="26/09/11/09:00")],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(first.returncode, 0, first.stderr)
+        second, second_dir = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/10:00:00",
+                "versions": self.versions,
+                "records": [self.record(quote_datetime="26/09/11/10:00", price="2651")],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(second.returncode, 0, second.stderr)
+        with (second_dir / "26-09-11_memory.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            second_rows = list(csv.reader(handle))
+        self.assertEqual(len(second_rows), 3)
+        third, _ = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/11:00:00",
+                "versions": self.versions,
+                "records": [],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(third.returncode, 0, third.stderr)
+        output = json.loads(third.stdout)
+        self.assertEqual(Path(output["baseline_directory"]), second_dir.resolve())
+        self.assertNotEqual(Path(output["baseline_directory"]), first_dir.resolve())
+
+    def test_cross_day_snapshot_does_not_inherit_previous_day(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        snapshot_root = Path(temp_dir.name) / "snapshots"
+        first, _ = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/09:00:00",
+                "versions": self.versions,
+                "records": [self.record(quote_datetime="26/09/11/09:00")],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(first.returncode, 0, first.stderr)
+
+        cpu_record = self.record(
+            quote_datetime="26/09/12/09:00",
+            category="cpu",
+            brand_raw="Intel",
+            brand_normalized="Intel",
+            brand_resolution_method="explicit",
+            product_name="Intel 6430",
+            matched_product_id="84",
+        )
+        second, second_dir = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/12/09:00:00",
+                "versions": self.versions,
+                "records": [cpu_record],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(second.returncode, 0, second.stderr)
+        output = json.loads(second.stdout)
+        self.assertTrue(output["first_snapshot_of_day"])
+        self.assertIsNone(output["baseline_directory"])
+        self.assertTrue((second_dir / "26-09-12_cpu.csv").exists())
+        self.assertFalse((second_dir / "26-09-12_memory.csv").exists())
+
+    def test_same_four_fields_across_snapshots_keep_earlier_datetime(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        snapshot_root = Path(temp_dir.name) / "snapshots"
+        first, _ = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/09:00:00",
+                "versions": self.versions,
+                "records": [self.record(quote_datetime="26/09/11/09:00")],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(first.returncode, 0, first.stderr)
+        second, second_dir = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/10:00:00",
+                "versions": self.versions,
+                "records": [self.record(quote_datetime="26/09/11/10:00")],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(second.returncode, 0, second.stderr)
+        output = json.loads(second.stdout)
+        self.assertEqual(output["duplicate_rows_removed"], 1)
+        with (second_dir / "26-09-11_memory.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1][0], "26/09/11/09:00")
+
+    def test_ambiguous_latest_snapshot_stops_before_writing(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        snapshot_root = Path(temp_dir.name) / "snapshots"
+        (snapshot_root / "26-09-11_09-00-00_a").mkdir(parents=True)
+        (snapshot_root / "26-09-11_09-00-00_b").mkdir()
+        result, target = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/10:00:00",
+                "versions": self.versions,
+                "records": [self.record(quote_datetime="26/09/11/10:00")],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("无法唯一确定当日最新历史快照", result.stderr)
+        self.assertFalse(target.exists())
+
+    def test_invalid_baseline_header_stops_before_writing(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        snapshot_root = Path(temp_dir.name) / "snapshots"
+        baseline = snapshot_root / "26-09-11_09-00-00"
+        baseline.mkdir(parents=True)
+        invalid_file = baseline / "26-09-11_memory.csv"
+        invalid_file.write_text("错误表头\n", encoding="utf-8")
+        original = invalid_file.read_bytes()
+        result, target = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/10:00:00",
+                "versions": self.versions,
+                "records": [self.record(quote_datetime="26/09/11/10:00")],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("已有CSV表头不匹配", result.stderr)
+        self.assertFalse(target.exists())
+        self.assertEqual(invalid_file.read_bytes(), original)
+
+    def test_existing_target_snapshot_is_never_overwritten(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        snapshot_root = Path(temp_dir.name) / "snapshots"
+        target = snapshot_root / "26-09-11_10-00-00"
+        target.mkdir(parents=True)
+        sentinel = target / "keep.txt"
+        sentinel.write_text("keep", encoding="utf-8")
+        result, _ = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/10:00:00",
+                "versions": self.versions,
+                "records": [self.record(quote_datetime="26/09/11/10:00")],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("禁止覆盖", result.stderr)
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
 
 
 if __name__ == "__main__":

@@ -182,13 +182,10 @@ Do not generate a USD-derived row when Hong Kong location is unconfirmed or any 
 - Classify condition by meaning rather than by an exhaustive term list
 - Use `explicit_new` and normalize to `全新` only when the wording clearly states that the item is brand-new
 - Use `explicit_not_new` and normalize to `拆机` whenever the wording clearly states that the item is not brand-new. This includes used, disassembled, opened, refurbished, and percentage-new descriptions; examples such as `二手`, `旧货`, `拆新`, `拆机新`, `翻新`, `几成新`, `九成新`, and `9成新` are illustrative, not exhaustive
-- Use `missing` and leave condition empty when no condition wording appears
-- Use `ambiguous` and mark the record `needs_confirmation` only when condition wording appears but does not establish whether the item is brand-new
-- Memory DC exception: when a memory candidate contains a semantically recognizable DC or production-date signal and the applicable row or section does not explicitly state `全新`, use `memory_dc_default` and normalize condition to `拆机`
-- An explicit `全新` on the applicable memory row or inherited section overrides the DC default and remains `explicit_new`
-- Do not apply `memory_dc_default` to GPU, CPU, or a memory record without recognizable DC evidence
+- For CPU and memory, any record without an applicable explicit `全新` statement normalizes to `拆机`, including `missing` and `ambiguous` source condition classifications
+- For GPU, `missing` writes an empty condition and `ambiguous` requires confirmation
 - Preserve the literal source wording in `condition_raw`; write only the normalized `condition` to CSV
-- Except for the memory DC rule above, do not infer condition from `现货`, warehouse, packaging, year, DC, or quantity
+- Do not use `现货`, warehouse, packaging, year, DC, or quantity as an explicit `全新` signal
 - When the source has no explicit quote time, use the user's paste time as `quote_datetime`
 - Preserve `direction` internally because the CSV cannot distinguish purchase from sell evidence
 
@@ -200,9 +197,20 @@ One eligible row must have a supported category, exact mapped product ID and nam
 
 Do not generate a hard-disk CSV until the real category code and import template are confirmed
 
-After all normalization and conversion, deduplicate eligible rows within the current batch by the exact five CSV fields: `日期时间`, `产品名型号`, `报价`, `税务状态`, and `货况`. Keep the first occurrence and discard later identical rows. If any one field differs, preserve both rows
+## Daily rolling snapshots
 
-Current-batch deduplication is automatic. Historical same-day CSV merging still requires the user's explicit choice and uses the same exact-five-field identity
+Each timestamped output directory is the complete quote snapshot for its calendar day at that batch time
+
+- Require one confirmed snapshot root and a `batch_datetime`; ask only when the root is unclear or the latest same-day baseline is not unique
+- Create a new `yy-MM-dd_HH-mm-ss` directory for every batch and never overwrite an existing directory
+- Use only the chronologically latest earlier snapshot from the same day as the baseline; do not combine multiple historical snapshots
+- When no earlier snapshot exists that day, start from an empty snapshot without asking
+- Validate every baseline CSV's UTF-8 encoding, five-column header, filename date, row date, and row width before creating the new snapshot
+- Carry every baseline category CSV into the new directory; copy files for categories absent from the current batch without rewriting them
+- Merge eligible current-batch rows into their category files, while leaving the baseline directory unchanged
+- Never inherit data across calendar dates
+
+Deduplicate the baseline plus current batch by `产品名型号`, `报价`, `税务状态`, and `货况`. `日期时间` does not participate in identity. When all four fields match, retain the row with the earlier date-time; preserve both rows when any of the four fields differs
 
 ## Version and feedback isolation
 

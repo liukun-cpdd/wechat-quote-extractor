@@ -7,6 +7,7 @@ import argparse
 import csv
 import json
 import re
+import shutil
 import sys
 from collections import defaultdict
 from datetime import datetime
@@ -23,7 +24,6 @@ ALLOWED_TAX = {"含税", "未税"}
 ALLOWED_CONDITION_CLASSIFICATIONS = {
     "explicit_new",
     "explicit_not_new",
-    "memory_dc_default",
     "missing",
     "ambiguous",
 }
@@ -86,6 +86,10 @@ DEFAULT_RELEASE_MANIFEST = (
 USD_CONVERSION_FACTOR = Decimal("1.13")
 OFFICIAL_RATE_SOURCE = "中国人民银行授权中国外汇交易中心公布的人民币汇率中间价"
 OFFICIAL_RATE_HOSTS = {"www.pbc.gov.cn", "pbc.gov.cn", "www.chinamoney.com.cn", "chinamoney.com.cn"}
+SNAPSHOT_NAME_PATTERN = re.compile(
+    r"^(?P<date>\d{2}-\d{2}-\d{2})_(?P<time>\d{2}-\d{2}-\d{2})(?:_.+)?$"
+)
+CSV_NAME_PATTERN = re.compile(r"^(?P<date>\d{2}-\d{2}-\d{2})_.+\.csv$", re.IGNORECASE)
 
 
 class ValidationError(Exception):
@@ -97,7 +101,12 @@ def parse_args() -> argparse.Namespace:
         description="Build category CSV files from reviewed structured quote records"
     )
     parser.add_argument("--input", required=True, type=Path, help="UTF-8 JSON input")
-    parser.add_argument("--output-dir", required=True, type=Path, help="CSV output directory")
+    parser.add_argument(
+        "--snapshot-root",
+        required=True,
+        type=Path,
+        help="Confirmed root containing immutable timestamped daily snapshots",
+    )
     parser.add_argument(
         "--product-map",
         type=Path,
@@ -121,11 +130,6 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_RELEASE_MANIFEST,
         help="Release version manifest JSON; defaults to the bundled manifest",
-    )
-    parser.add_argument(
-        "--existing-dir",
-        type=Path,
-        help="Optional same-day CSV directory to merge using exact five-field deduplication",
     )
     return parser.parse_args()
 
@@ -175,18 +179,18 @@ def normalize_condition(record: dict[str, Any], index: int) -> str:
         raise ValidationError(
             f"第{index}条condition_classification无效: {classification or '<空>'}"
         )
+    category = clean_text(record.get("category"))
+    defaults_to_disassembled = category in {"cpu", "memory"}
     if classification == "missing":
         if raw or value:
             raise ValidationError(f"第{index}条货况分类为missing但仍包含货况值")
-        return ""
+        return "拆机" if defaults_to_disassembled else ""
     if classification == "ambiguous":
+        if defaults_to_disassembled:
+            if "全新" in raw or value == "全新":
+                raise ValidationError(f"第{index}条默认拆机分类与全新货况冲突")
+            return "拆机"
         raise ValidationError(f"第{index}条货况语义仍有歧义，不能进入CSV")
-    if classification == "memory_dc_default":
-        if clean_text(record.get("category")) != "memory":
-            raise ValidationError(f"第{index}条仅内存可使用memory_dc_default货况规则")
-        if "全新" in raw or value not in {"", "拆机"}:
-            raise ValidationError(f"第{index}条DC默认拆机分类与货况值冲突")
-        return "拆机"
     if not raw:
         raise ValidationError(f"第{index}条明确货况缺少condition_raw")
     if classification == "explicit_new":
@@ -286,6 +290,75 @@ def validate_datetime(value: Any) -> tuple[str, str]:
     except ValueError as exc:
         raise ValidationError(f"日期时间必须符合yy/MM/dd/HH:mm: {raw or '<空>'}") from exc
     return raw, parsed.strftime("%y-%m-%d")
+
+
+def load_batch_datetime(payload: dict[str, Any]) -> datetime:
+    raw = clean_text(payload.get("batch_datetime"))
+    try:
+        return datetime.strptime(raw, "%y/%m/%d/%H:%M:%S")
+    except ValueError as exc:
+        raise ValidationError(
+            f"batch_datetime必须符合yy/MM/dd/HH:mm:ss: {raw or '<空>'}"
+        ) from exc
+
+
+def select_daily_baseline(
+    snapshot_root: Path, batch_datetime: datetime
+) -> tuple[Path, Path | None]:
+    if not snapshot_root.exists() or not snapshot_root.is_dir():
+        raise ValidationError(f"快照输出根目录不存在或不是目录: {snapshot_root}")
+
+    day_text = batch_datetime.strftime("%y-%m-%d")
+    target = snapshot_root / batch_datetime.strftime("%y-%m-%d_%H-%M-%S")
+    if target.exists():
+        raise ValidationError(f"本批快照目录已存在，禁止覆盖: {target}")
+
+    candidates: list[tuple[datetime, Path]] = []
+    unrecognized = []
+    non_historical = []
+    for child in snapshot_root.iterdir():
+        if not child.is_dir():
+            continue
+        match = SNAPSHOT_NAME_PATTERN.fullmatch(child.name)
+        if match is None:
+            if child.name.startswith(f"{day_text}_"):
+                unrecognized.append(child.name)
+            continue
+        try:
+            parsed = datetime.strptime(
+                f"{match.group('date')}_{match.group('time')}",
+                "%y-%m-%d_%H-%M-%S",
+            )
+        except ValueError:
+            if match.group("date") == day_text:
+                unrecognized.append(child.name)
+            continue
+        if parsed.strftime("%y-%m-%d") != day_text:
+            continue
+        if parsed >= batch_datetime:
+            non_historical.append(child.name)
+            continue
+        candidates.append((parsed, child))
+
+    if unrecognized:
+        raise ValidationError(
+            "无法唯一识别当日历史快照目录: " + ", ".join(sorted(unrecognized))
+        )
+    if non_historical:
+        raise ValidationError(
+            "本批时间必须晚于已有当日快照: " + ", ".join(sorted(non_historical))
+        )
+    if not candidates:
+        return target, None
+
+    latest_time = max(item[0] for item in candidates)
+    latest = [path for parsed, path in candidates if parsed == latest_time]
+    if len(latest) != 1:
+        raise ValidationError(
+            "无法唯一确定当日最新历史快照: "
+            + ", ".join(sorted(path.name for path in latest))
+        )
+    return target, latest[0]
 
 
 def load_product_map(path: Path) -> dict[tuple[str, str], tuple[str, str]]:
@@ -519,7 +592,7 @@ def validate_eligible(
     return f"{file_date}_{CATEGORY_CODES[category]}.csv", row
 
 
-def read_existing(path: Path) -> list[tuple[str, ...]]:
+def read_existing(path: Path, expected_date: str) -> list[tuple[str, ...]]:
     if not path.exists():
         return []
     try:
@@ -532,10 +605,33 @@ def read_existing(path: Path) -> list[tuple[str, ...]]:
             for line_number, row in enumerate(reader, start=2):
                 if len(row) != len(HEADERS):
                     raise ValidationError(f"已有CSV第{line_number}行列数错误: {path}")
+                try:
+                    _, row_date = validate_datetime(row[0])
+                except ValidationError as exc:
+                    raise ValidationError(
+                        f"已有CSV第{line_number}行日期时间无效: {path}"
+                    ) from exc
+                if row_date != expected_date:
+                    raise ValidationError(f"已有CSV包含跨日期记录: {path}")
                 rows.append(tuple(row))
             return rows
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         raise ValidationError(f"无法读取已有CSV {path}: {exc}") from exc
+
+
+def load_baseline_files(
+    baseline_dir: Path | None, expected_date: str
+) -> dict[str, list[tuple[str, ...]]]:
+    if baseline_dir is None:
+        return {}
+
+    files: dict[str, list[tuple[str, ...]]] = {}
+    for path in sorted(baseline_dir.glob("*.csv")):
+        match = CSV_NAME_PATTERN.fullmatch(path.name)
+        if match is None or match.group("date") != expected_date:
+            raise ValidationError(f"历史快照包含日期或命名不匹配的CSV: {path}")
+        files[path.name] = read_existing(path, expected_date)
+    return files
 
 
 def write_csv(path: Path, rows: list[tuple[str, ...]]) -> None:
@@ -549,18 +645,25 @@ def write_csv(path: Path, rows: list[tuple[str, ...]]) -> None:
         raise ValidationError(f"无法写入CSV {path}: {exc}") from exc
 
 
-def deduplicate_rows(
+def deduplicate_rows_keep_earliest(
     rows: list[tuple[str, ...]],
 ) -> tuple[list[tuple[str, ...]], int]:
     unique_rows = []
-    seen = set()
+    key_indexes: dict[tuple[str, ...], int] = {}
     duplicate_count = 0
     for row in rows:
-        if row in seen:
-            duplicate_count += 1
+        key = row[1:]
+        existing_index = key_indexes.get(key)
+        if existing_index is None:
+            key_indexes[key] = len(unique_rows)
+            unique_rows.append(row)
             continue
-        seen.add(row)
-        unique_rows.append(row)
+        duplicate_count += 1
+        existing = unique_rows[existing_index]
+        existing_time = datetime.strptime(existing[0], "%y/%m/%d/%H:%M")
+        candidate_time = datetime.strptime(row[0], "%y/%m/%d/%H:%M")
+        if candidate_time < existing_time:
+            unique_rows[existing_index] = row
     return unique_rows, duplicate_count
 
 
@@ -568,6 +671,11 @@ def main() -> int:
     args = parse_args()
     try:
         payload = load_payload(args.input)
+        batch_datetime = load_batch_datetime(payload)
+        snapshot_date = batch_datetime.strftime("%y-%m-%d")
+        target_dir, baseline_dir = select_daily_baseline(
+            args.snapshot_root, batch_datetime
+        )
         release_versions = load_release_manifest(args.release_manifest)
         validate_payload_versions(payload, release_versions)
         product_map = load_product_map(args.product_map)
@@ -593,29 +701,56 @@ def main() -> int:
                     brand_aliases,
                     tax_aliases,
                 )
+                if not filename.startswith(f"{snapshot_date}_"):
+                    raise ValidationError(
+                        f"第{index}条报价日期与本批快照日期不一致，禁止跨日期累计"
+                    )
                 grouped[filename].append(row)
 
+        baseline_files = load_baseline_files(baseline_dir, snapshot_date)
+        all_filenames = sorted(set(baseline_files).union(grouped))
+        prepared: dict[str, tuple[list[tuple[str, ...]], bool, int, int]] = {}
         outputs = []
         total_written = 0
-        total_current_batch_duplicates = 0
-        for filename, new_rows in sorted(grouped.items()):
-            unique_new_rows, current_batch_duplicates = deduplicate_rows(new_rows)
-            total_current_batch_duplicates += current_batch_duplicates
-            prior_rows = []
-            if args.existing_dir is not None:
-                prior_rows = read_existing(args.existing_dir / filename)
-            merged, _ = deduplicate_rows(prior_rows + unique_new_rows)
-            output_path = args.output_dir / filename
-            write_csv(output_path, merged)
-            total_written += len(merged)
+        total_duplicates = 0
+        for filename in all_filenames:
+            baseline_rows = baseline_files.get(filename, [])
+            new_rows = grouped.get(filename, [])
+            inherited_unchanged = filename in baseline_files and not new_rows
+            if inherited_unchanged:
+                final_rows = baseline_rows
+                duplicates_removed = 0
+            else:
+                final_rows, duplicates_removed = deduplicate_rows_keep_earliest(
+                    baseline_rows + new_rows
+                )
+            prepared[filename] = (
+                final_rows,
+                inherited_unchanged,
+                len(baseline_rows),
+                duplicates_removed,
+            )
+            total_duplicates += duplicates_removed
+            total_written += len(final_rows)
+
+        target_dir.mkdir()
+        for filename in all_filenames:
+            final_rows, inherited_unchanged, baseline_count, duplicates_removed = prepared[
+                filename
+            ]
+            output_path = target_dir / filename
+            if inherited_unchanged and baseline_dir is not None:
+                shutil.copy2(baseline_dir / filename, output_path)
+            else:
+                write_csv(output_path, final_rows)
             outputs.append(
                 {
                     "path": str(output_path.resolve()),
-                    "existing_rows": len(prior_rows),
-                    "new_rows": len(new_rows),
-                    "new_unique_rows": len(unique_new_rows),
-                    "duplicate_rows_removed": current_batch_duplicates,
-                    "written_rows": len(merged),
+                    "baseline_rows": baseline_count,
+                    "new_rows": len(grouped.get(filename, [])),
+                    "duplicate_rows_removed": duplicates_removed,
+                    "written_rows": len(final_rows),
+                    "inherited_unchanged": inherited_unchanged,
                 }
             )
 
@@ -623,8 +758,14 @@ def main() -> int:
             json.dumps(
                 {
                     "versions": release_versions,
+                    "batch_datetime": batch_datetime.strftime("%y/%m/%d/%H:%M:%S"),
+                    "snapshot_directory": str(target_dir.resolve()),
+                    "baseline_directory": (
+                        str(baseline_dir.resolve()) if baseline_dir is not None else None
+                    ),
+                    "first_snapshot_of_day": baseline_dir is None,
                     "counts": counts,
-                    "duplicate_rows_removed": total_current_batch_duplicates,
+                    "duplicate_rows_removed": total_duplicates,
                     "written_rows": total_written,
                     "outputs": outputs,
                 },
