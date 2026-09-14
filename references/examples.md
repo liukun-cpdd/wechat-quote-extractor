@@ -43,6 +43,16 @@ Expected interpretation
 
 From version `0.3.1`, `MT` normalizes to `镁光` automatically. Earlier versions remain unchanged in Git history
 
+## Shared memory quote across brands
+
+```text
+三星、SK 32G 4800 含税8200
+```
+
+When the brand position and shared scope are unambiguous, expand this into separate `三星 32G 4800` and `海力士 32G 4800` candidates. Both inherit price `8200`, tax status `含税`, and the memory default condition `拆机`, then match the product map independently
+
+Expressions such as `三星/SK` or `三星和SK` may carry the same meaning. These are examples, not a delimiter allowlist; do not split separators inside models or configurations, and do not apply this memory rule to CPU or GPU lists. If one expanded brand is unmapped, exclude only that candidate. Missing price or tax evidence remains subject to the normal eligibility rules
+
 ## Typo and shorthand proposal
 
 ```text

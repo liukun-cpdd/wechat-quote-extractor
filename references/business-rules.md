@@ -54,6 +54,10 @@ Explicit row value > section default > confirmed global default > needs_confirma
 - `质保一年` is temporary warranty context and is discarded before the finalized batch
 - `含税不对应`, `含税票不对应`, and `含税开其他品类发票` all establish tax status `含税`; discard the invoice-correspondence qualifier
 
+For a memory quote in which multiple recognizable brands clearly share one set of specifications and quote attributes, expand one candidate per brand before product matching. Detect the shared scope semantically; punctuation, whitespace, slashes, and conjunctions are cues rather than a fixed delimiter list. Apply this only to unambiguous brand-position expressions, not to CPU or GPU lists or separators inside a model or configuration
+
+Apply the shared capacity, frequency, price, tax status, and condition to every expanded candidate, then normalize aliases and resolve each product independently. One unmatched brand does not block another. Missing evidence and expanded-record deduplication continue to follow the normal rules
+
 ## Product identity resolution
 
 Use [product-model-map.csv](product-model-map.csv) as the only importable product dictionary. Use [brand-alias-map.csv](brand-alias-map.csv) as the only automatic brand-alias dictionary

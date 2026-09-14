@@ -127,6 +127,55 @@ class BuildImportCsvTests(unittest.TestCase):
             rows = list(csv.reader(handle))
         self.assertEqual(rows[1][1], "镁光 32G 2933")
 
+    def test_expanded_shared_memory_quote_writes_each_mapped_brand_independently(self) -> None:
+        payload = {
+            "versions": self.versions,
+            "records": [
+                self.record(
+                    brand_raw="三星",
+                    brand_normalized="三星",
+                    product_name="三星 32G 4800",
+                    matched_product_id="59",
+                    price="8200",
+                ),
+                self.record(
+                    brand_raw="SK",
+                    brand_normalized="海力士",
+                    brand_resolution_method="confirmed_alias",
+                    product_name="海力士 32G 4800",
+                    matched_product_id="60",
+                    match_method="confirmed_alias",
+                    price="8200",
+                ),
+                {
+                    "category": "memory",
+                    "brand_raw": "未收录品牌",
+                    "eligibility": "excluded",
+                    "requires_confirmation": False,
+                    "issues": ["product_not_in_map"],
+                },
+            ],
+        }
+        result, output_dir, temp_dir = self.run_build(payload)
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(
+            output["counts"],
+            {"eligible": 2, "needs_confirmation": 0, "excluded": 1},
+        )
+        with (output_dir / "26-09-11_memory.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(
+            {tuple(row[1:]) for row in rows[1:]},
+            {
+                ("三星 32G 4800", "8200", "含税", "拆机"),
+                ("海力士 32G 4800", "8200", "含税", "拆机"),
+            },
+        )
+
     def test_ws_is_a_case_insensitive_untaxed_alias(self) -> None:
         for raw_tax in ["WS", "ws", "Ws"]:
             with self.subTest(raw_tax=raw_tax):
