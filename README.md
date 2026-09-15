@@ -6,7 +6,7 @@
 
 将聊天中不规则的 GPU、CPU、内存报价，整理为可审阅、可校验、可导入的行情 CSV
 
-![Version](https://img.shields.io/badge/version-v0.6.0-E87524?style=flat-square)
+![Version](https://img.shields.io/badge/version-v0.6.1-E87524?style=flat-square)
 ![Codex Skill](https://img.shields.io/badge/OpenAI_Codex-Skill-111827?style=flat-square)
 ![Tests](https://img.shields.io/badge/tests-37_passed-1F9D69?style=flat-square)
 ![Visibility](https://img.shields.io/badge/visibility-public-F3A847?style=flat-square)
@@ -247,7 +247,7 @@ wechat-quote-extractor/
 python -X utf8 -B -m unittest discover -s tests -v
 ```
 
-当前版本 `v0.6.0`，共 37 项自动化测试。版本变更、字典更新和同事分发遵循 [统一发布流程](references/release-process.md)
+当前版本 `v0.6.1`，共 37 项自动化测试。版本变更、字典更新和同事分发遵循 [统一发布流程](references/release-process.md)
 
 ---
 
