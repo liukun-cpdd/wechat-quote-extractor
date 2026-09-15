@@ -30,7 +30,8 @@ class BuildImportCsvTests(unittest.TestCase):
         batch_datetime = datetime.strptime(
             prepared["batch_datetime"], "%y/%m/%d/%H:%M:%S"
         )
-        snapshot_dir = snapshot_root / batch_datetime.strftime("%y-%m-%d_%H-%M-%S")
+        day_dir = snapshot_root / batch_datetime.strftime("%y-%m-%d")
+        snapshot_dir = day_dir / batch_datetime.strftime("%y-%m-%d_%H-%M-%S")
         input_path = snapshot_root.parent / "records.json"
         input_path.write_text(json.dumps(prepared, ensure_ascii=False), encoding="utf-8")
         result = subprocess.run(
@@ -480,7 +481,7 @@ class BuildImportCsvTests(unittest.TestCase):
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
         snapshot_root = Path(temp_dir.name) / "snapshots"
-        baseline = snapshot_root / "26-09-11_09-00-00"
+        baseline = snapshot_root / "26-09-11" / "26-09-11_09-00-00"
         baseline.mkdir(parents=True)
         legacy_file = baseline / "26-09-11_gpu.csv"
         legacy_file.write_text(
@@ -881,6 +882,8 @@ class BuildImportCsvTests(unittest.TestCase):
         output = json.loads(second.stdout)
         self.assertTrue(output["first_snapshot_of_day"])
         self.assertIsNone(output["baseline_directory"])
+        self.assertTrue((snapshot_root / "26-09-11").is_dir())
+        self.assertTrue((snapshot_root / "26-09-12").is_dir())
         self.assertTrue((second_dir / "26-09-12_cpu.csv").exists())
         self.assertFalse((second_dir / "26-09-12_memory.csv").exists())
 
@@ -919,8 +922,9 @@ class BuildImportCsvTests(unittest.TestCase):
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
         snapshot_root = Path(temp_dir.name) / "snapshots"
-        (snapshot_root / "26-09-11_09-00-00_a").mkdir(parents=True)
-        (snapshot_root / "26-09-11_09-00-00_b").mkdir()
+        day_dir = snapshot_root / "26-09-11"
+        (day_dir / "26-09-11_09-00-00_a").mkdir(parents=True)
+        (day_dir / "26-09-11_09-00-00_b").mkdir()
         result, target = self.run_build_in_root(
             {
                 "batch_datetime": "26/09/11/10:00:00",
@@ -937,7 +941,7 @@ class BuildImportCsvTests(unittest.TestCase):
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
         snapshot_root = Path(temp_dir.name) / "snapshots"
-        baseline = snapshot_root / "26-09-11_09-00-00"
+        baseline = snapshot_root / "26-09-11" / "26-09-11_09-00-00"
         baseline.mkdir(parents=True)
         invalid_file = baseline / "26-09-11_memory.csv"
         invalid_file.write_text("错误表头\n", encoding="utf-8")
@@ -959,7 +963,7 @@ class BuildImportCsvTests(unittest.TestCase):
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
         snapshot_root = Path(temp_dir.name) / "snapshots"
-        target = snapshot_root / "26-09-11_10-00-00"
+        target = snapshot_root / "26-09-11" / "26-09-11_10-00-00"
         target.mkdir(parents=True)
         sentinel = target / "keep.txt"
         sentinel.write_text("keep", encoding="utf-8")

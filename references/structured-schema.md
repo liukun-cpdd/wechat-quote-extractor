@@ -63,7 +63,7 @@ The finalized batch is not a transcript archive. Extraction-only signals must be
 
 Copy version values exactly from [release-manifest.json](release-manifest.json). Do not infer or increment them while processing a quote
 
-`batch_datetime` is the user's paste or processing time in `yy/MM/dd/HH:mm:ss`. It determines the snapshot date and timestamped output directory. Every eligible record in the batch must have the same calendar date
+`batch_datetime` is the user's paste or processing time in `yy/MM/dd/HH:mm:ss`. It determines the `yy-MM-dd` date directory and timestamped output directory. Every eligible record in the batch must have the same calendar date
 
 ## Extraction-only signals
 
@@ -234,8 +234,8 @@ Encoding and filename
 
 ## Snapshot contract
 
-The generator requires `--snapshot-root <confirmed-root>` and creates `yy-MM-dd_HH-mm-ss` beneath it. Its result reports `snapshot_directory`, `baseline_directory`, and `first_snapshot_of_day`
+The generator requires `--snapshot-root <confirmed-root>` and creates `yy-MM-dd/yy-MM-dd_HH-mm-ss` beneath it. Its result reports `snapshot_directory`, `baseline_directory`, and `first_snapshot_of_day`
 
-The baseline is either null for the day's first batch or exactly one latest earlier same-day snapshot. Every inherited CSV must pass the five-column contract before the new directory is created. New snapshots normalize inherited legacy GPU names to the current `英伟达` prefix while leaving the baseline untouched
+The baseline is either null for the day's first batch or exactly one latest earlier snapshot inside the same date directory. Every inherited CSV must pass the five-column contract before the new snapshot is created. New snapshots normalize inherited legacy GPU names to the current `英伟达` prefix while leaving the baseline untouched
 
 The deduplication key is the four-tuple `(产品名型号, 报价, 税务状态, 货况)`. When duplicate keys exist, retain the row with the earliest valid `日期时间`. `duplicate_rows_removed` reports discarded rows

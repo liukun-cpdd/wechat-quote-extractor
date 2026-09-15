@@ -106,7 +106,7 @@ def parse_args() -> argparse.Namespace:
         "--snapshot-root",
         required=True,
         type=Path,
-        help="Confirmed root containing immutable timestamped daily snapshots",
+        help="Confirmed root containing date folders and immutable timestamped snapshots",
     )
     parser.add_argument(
         "--product-map",
@@ -316,14 +316,18 @@ def select_daily_baseline(
         raise ValidationError(f"快照输出根目录不存在或不是目录: {snapshot_root}")
 
     day_text = batch_datetime.strftime("%y-%m-%d")
-    target = snapshot_root / batch_datetime.strftime("%y-%m-%d_%H-%M-%S")
+    day_directory = snapshot_root / day_text
+    if day_directory.exists() and not day_directory.is_dir():
+        raise ValidationError(f"当日快照路径存在但不是目录: {day_directory}")
+    target = day_directory / batch_datetime.strftime("%y-%m-%d_%H-%M-%S")
     if target.exists():
         raise ValidationError(f"本批快照目录已存在，禁止覆盖: {target}")
 
     candidates: list[tuple[datetime, Path]] = []
     unrecognized = []
     non_historical = []
-    for child in snapshot_root.iterdir():
+    children = day_directory.iterdir() if day_directory.exists() else []
+    for child in children:
         if not child.is_dir():
             continue
         match = SNAPSHOT_NAME_PATTERN.fullmatch(child.name)
@@ -759,7 +763,7 @@ def main() -> int:
             total_duplicates += duplicates_removed
             total_written += len(final_rows)
 
-        target_dir.mkdir()
+        target_dir.mkdir(parents=True)
         for filename in all_filenames:
             final_rows, inherited_unchanged, baseline_count, duplicates_removed = prepared[
                 filename

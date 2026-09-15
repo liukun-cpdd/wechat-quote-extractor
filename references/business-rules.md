@@ -205,10 +205,10 @@ Do not generate a hard-disk CSV until the real category code and import template
 
 ## Daily rolling snapshots
 
-Each timestamped output directory is the complete quote snapshot for its calendar day at that batch time
+Each date directory contains that calendar day's timestamped snapshots. Every timestamped directory is the complete quote snapshot at that batch time
 
 - Require one confirmed snapshot root and a `batch_datetime`; ask only when the root is unclear or the latest same-day baseline is not unique
-- Create a new `yy-MM-dd_HH-mm-ss` directory for every batch and never overwrite an existing directory
+- Create the `yy-MM-dd` date directory when needed, then create a new `yy-MM-dd_HH-mm-ss` snapshot inside it; never overwrite an existing directory
 - Use only the chronologically latest earlier snapshot from the same day as the baseline; do not combine multiple historical snapshots
 - When no earlier snapshot exists that day, start from an empty snapshot without asking
 - Validate every baseline CSV's UTF-8 encoding, five-column header, filename date, row date, and row width before creating the new snapshot

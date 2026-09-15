@@ -215,7 +215,7 @@ After extraction, discard the DC token. The first two rows use `condition_classi
 
 ## Daily snapshot duplicate removal
 
-Use the latest earlier same-day snapshot as the only baseline. Carry its category files into the new timestamped directory and merge the current batch into affected categories
+Use the latest earlier snapshot inside the same `yy-MM-dd` date directory as the only baseline. Carry its category files into the new timestamped directory and merge the current batch into affected categories
 
 For example, `2650` and `2650.00` become the same price, and `含税` and `含税不对应` both become `含税`. When product, normalized price, tax status, and condition match, they represent one quote even if their date-times differ
 

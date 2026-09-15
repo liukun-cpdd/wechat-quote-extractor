@@ -2,7 +2,7 @@
 name: wechat-quote-extractor
 description: Extract structured market quotes from pasted Chinese hardware offer or purchase text, propose reviewable corrections for likely brand or model variants, and generate validated category CSV files for the existing market import workflow. Use for 微信报价整理、行情报价识别、采购价或售价提取、以及 GPU、CPU、内存和硬盘行情导入准备，不用于联系人或聊天记录管理
 metadata:
-  version: "0.6.0"
+  version: "0.6.1"
 ---
 
 # WeChat Quote Extractor
@@ -79,7 +79,7 @@ Prepare a UTF-8 JSON file following [structured-schema.md](references/structured
 python scripts/build-import-csv.py --input <records.json> --snapshot-root <confirmed-snapshot-root>
 ```
 
-The generator creates a new time directory, inherits only the latest same-day snapshot, and starts fresh on a new date. Ask the user only when the snapshot root is unclear or the latest same-day baseline is not unique
+The generator creates a `yy-MM-dd` date directory first, then a timestamped snapshot inside it. It inherits only the latest snapshot in that date directory and starts fresh on a new date. Ask the user only when the snapshot root is unclear or the latest same-day baseline is not unique
 
 Refresh the product dictionary only as part of a reviewed release
 
@@ -95,7 +95,7 @@ CSV output contains exactly
 日期时间,产品名型号,报价,税务状态,货况
 ```
 
-Each timestamped directory is a complete snapshot for that day. Inside it, use one file per category named `yy-MM-dd_category.csv`
+Each `yy-MM-dd/yy-MM-dd_HH-mm-ss` directory is a complete snapshot for that day. Inside it, use one file per category named `yy-MM-dd_category.csv`
 
 Do not include contacts, chat history, direction, warehouse, issues, candidates, confidence, feedback, or version fields in the CSV
 
