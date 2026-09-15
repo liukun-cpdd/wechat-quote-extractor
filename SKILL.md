@@ -2,7 +2,7 @@
 name: wechat-quote-extractor
 description: Extract structured market quotes from pasted Chinese hardware offer or purchase text, propose reviewable corrections for likely brand or model variants, and generate validated category CSV files for the existing market import workflow. Use for 微信报价整理、行情报价识别、采购价或售价提取、以及 GPU、CPU、内存和硬盘行情导入准备，不用于联系人或聊天记录管理
 metadata:
-  version: "0.6.1"
+  version: "0.6.2"
 ---
 
 # WeChat Quote Extractor
@@ -59,9 +59,11 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 - `WS` is a confirmed tax-status alias for `未税`; matching is case-insensitive
 - Tax status means only whether the quoted price includes tax. Any positive phrase containing `含税`, including invoice-mismatch wording, normalizes to `含税`; invoice correspondence is discarded
 - Do not infer tax status when no explicit `含税`, `未税`, `不含税`, or confirmed tax alias appears
+- Only tax-inclusive quotes may be `eligible`. Recognize explicit untaxed quotes, including `WS`, but exclude them from the current import
 - Use paste time when the source has no explicit quote time
 - For CPU and memory, write `全新` only when the applicable source explicitly states `全新`; otherwise write `拆机`
-- For GPU, explicit brand-new wording writes `全新`, explicit non-new wording writes `拆机`, missing condition remains empty, and ambiguous condition requires confirmation
+- For ordinary GPU, explicit brand-new wording writes `全新`, explicit non-new wording writes `拆机`, and a missing condition defaults to `全新`
+- A GPU clearly described as a complete machine, module, or equivalent special form does not receive the default. If its condition is missing, exclude the quote; if the form itself is uncertain, ask the user before deciding
 - Ignore memory quotes that clearly describe white-label or dual-label modules; do not preview, persist, or write them to CSV
 - DC forms such as `DC22+`, `22`, and `22+` remain semantic extraction cues only; do not retain them or use them to override an explicit `全新`
 - A price with `x` or `X` replacing digits is invalid; multiplication such as `25800*10张` is not masking

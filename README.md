@@ -6,9 +6,9 @@
 
 将聊天中不规则的 GPU、CPU、内存报价，整理为可审阅、可校验、可导入的行情 CSV
 
-![Version](https://img.shields.io/badge/version-v0.6.1-E87524?style=flat-square)
+![Version](https://img.shields.io/badge/version-v0.6.2-E87524?style=flat-square)
 ![Codex Skill](https://img.shields.io/badge/OpenAI_Codex-Skill-111827?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-37_passed-1F9D69?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-39_passed-1F9D69?style=flat-square)
 ![Visibility](https://img.shields.io/badge/visibility-public-F3A847?style=flat-square)
 
 </div>
@@ -109,7 +109,7 @@ flowchart LR
 - `25800*10张` 表示单价与数量，不属于价格打码
 - 税务状态只回答报价是否含税
 - `含税不对应`、`含税票不对应` 等表达统一归为含税
-- `WS` 是未税的已确认别名
+- 当前只录入含税报价；未税、不含税和 `WS` 报价能够被识别，但暂不进入 CSV
 - 缺少明确税务信号时不推断，记录进入待确认而不是 CSV
 
 ### 货况
@@ -117,9 +117,11 @@ flowchart LR
 | 品类 | 规则 |
 |---|---|
 | CPU、内存 | 只有明确标注全新才写全新，其他情况统一写拆机 |
-| GPU | 明确全新写全新，明确非全新写拆机，未说明时留空，语义冲突时待确认 |
+| GPU | 普通 GPU 明确全新写全新，明确非全新写拆机，未说明时默认全新 |
 
 `二手`、`拆新`、`拆机新`、`翻新` 和成色描述均按非全新语义归为拆机，不依赖固定词表
+
+GPU 名称明确出现“整机”或“模组”时，按特殊形态处理；同类含义由模型判断，不维护封闭词表。特殊形态未标货况时暂不录入，疑似特殊形态但无法判断时先向用户确认
 
 ### 香港美元报价
 
@@ -247,7 +249,7 @@ wechat-quote-extractor/
 python -X utf8 -B -m unittest discover -s tests -v
 ```
 
-当前版本 `v0.6.1`，共 37 项自动化测试。版本变更、字典更新和同事分发遵循 [统一发布流程](references/release-process.md)
+当前版本 `v0.6.2`，共 39 项自动化测试。版本变更、字典更新和同事分发遵循 [统一发布流程](references/release-process.md)
 
 ---
 

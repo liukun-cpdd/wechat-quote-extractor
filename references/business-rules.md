@@ -123,7 +123,7 @@ Preserve warehouse and region in structured fields. They do not enter the five-c
 Either direction can provide market evidence
 
 - Explicit sell price such as `含税17000出`
-- Explicit purchase price such as `未税2600收100条`
+- Explicit purchase price such as `含税2600收100条`
 
 The following are not price evidence
 
@@ -179,6 +179,7 @@ Do not generate a USD-derived row when Hong Kong location is unconfirmed or any 
 - Any positive expression containing `含税`, including `含税不对应`, `含税票不对应`, and `含税开其他品类发票`, normalizes to `含税` without confirmation
 - `未税` and the explicit negation `不含税` normalize to `未税`
 - `WS` is a confirmed alias for `未税`; apply it case-insensitively
+- Only `含税` quotes may be `eligible`. Mark an explicitly untaxed quote `excluded` with `untaxed_not_collected`; recognizing it does not authorize CSV output
 - Invoice correspondence wording without an explicit tax-inclusion signal does not establish tax status
 - If no explicit tax-inclusion expression or confirmed tax alias appears, do not infer tax status; mark the record `needs_confirmation`
 - If both positive tax-inclusive and tax-exclusive signals apply to the same row, mark the record `needs_confirmation`
@@ -189,7 +190,9 @@ Do not generate a USD-derived row when Hong Kong location is unconfirmed or any 
 - Use `explicit_new` and normalize to `全新` only when the wording clearly states that the item is brand-new
 - Use `explicit_not_new` and normalize to `拆机` whenever the wording clearly states that the item is not brand-new. This includes used, disassembled, opened, refurbished, and percentage-new descriptions; examples such as `二手`, `旧货`, `拆新`, `拆机新`, `翻新`, `几成新`, `九成新`, and `9成新` are illustrative, not exhaustive
 - For CPU and memory, any record without an applicable explicit `全新` statement normalizes to `拆机`, including `missing` and `ambiguous` source condition classifications
-- For GPU, `missing` writes an empty condition and `ambiguous` requires confirmation
+- For ordinary GPU, `missing` writes `全新` and `ambiguous` requires confirmation
+- Treat an explicit `整机` or `模组` product description as a special GPU form. Interpret equivalent wording semantically instead of maintaining a closed term list
+- A special-form GPU with no condition is `excluded` with `special_gpu_missing_condition`. When the wording may indicate a special form but cannot be resolved, use `needs_confirmation` with `ambiguous_gpu_form`; do not apply the ordinary-GPU default before confirmation
 - Preserve the literal source wording in `condition_raw`; write only the normalized `condition` to CSV
 - Do not use `现货`, warehouse, packaging, year, DC, or quantity as an explicit `全新` signal
 - When the source has no explicit quote time, use the user's paste time as `quote_datetime`
@@ -199,7 +202,7 @@ Do not generate a USD-derived row when Hong Kong location is unconfirmed or any 
 
 Only `eligible` records enter CSV. `needs_confirmation`, `excluded`, ignored unrelated text, ignored white-label or dual-label memory quotes, suggestions, and feedback never enter CSV
 
-One eligible row must have a supported category, exact mapped product ID and name, valid quote time, sell or purchase direction, exact positive price, tax status, allowed condition, no unresolved issue, compatible release versions, and any required current-batch confirmation evidence. An eligible CPU with an omitted source brand must also carry valid `model_inferred` evidence
+One eligible row must have a supported category, exact mapped product ID and name, valid quote time, sell or purchase direction, exact positive price, tax status `含税`, allowed condition, no unresolved issue, compatible release versions, and any required current-batch confirmation evidence. An eligible CPU with an omitted source brand must also carry valid `model_inferred` evidence
 
 Do not generate a hard-disk CSV until the real category code and import template are confirmed
 

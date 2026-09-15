@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -177,7 +178,7 @@ class BuildImportCsvTests(unittest.TestCase):
             },
         )
 
-    def test_ws_is_a_case_insensitive_untaxed_alias(self) -> None:
+    def test_ws_untaxed_quote_is_rejected_from_eligible_csv(self) -> None:
         for raw_tax in ["WS", "ws", "Ws"]:
             with self.subTest(raw_tax=raw_tax):
                 payload = {
@@ -194,17 +195,38 @@ class BuildImportCsvTests(unittest.TestCase):
                         )
                     ],
                 }
-                result, output_dir, temp_dir = self.run_build(payload)
+                result, _, temp_dir = self.run_build(payload)
                 self.addCleanup(temp_dir.cleanup)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                with (output_dir / "26-09-11_memory.csv").open(
-                    encoding="utf-8", newline=""
-                ) as handle:
-                    rows = list(csv.reader(handle))
-                self.assertEqual(
-                    rows[1],
-                    ["26/09/11/14:30", "镁光 64G 3200", "4200", "未税", "拆机"],
-                )
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("当前仅录入含税报价", result.stderr)
+
+    def test_excluded_untaxed_quote_does_not_block_taxed_output(self) -> None:
+        payload = {
+            "versions": self.versions,
+            "records": [
+                self.record(),
+                self.record(
+                    eligibility="excluded",
+                    tax_status_raw="未税",
+                    tax_status="未税",
+                    issues=["untaxed_not_collected"],
+                ),
+            ],
+        }
+        result, output_dir, temp_dir = self.run_build(payload)
+        self.addCleanup(temp_dir.cleanup)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertEqual(
+            output["counts"],
+            {"eligible": 1, "needs_confirmation": 0, "excluded": 1},
+        )
+        with (output_dir / "26-09-11_memory.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1][3], "含税")
 
     def test_tax_inclusive_invoice_qualifiers_normalize_without_confirmation(self) -> None:
         phrases = ["含税不对应", "含税票不对应", "含税开其他品类发票"]
@@ -256,20 +278,16 @@ class BuildImportCsvTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("税务状态无效", result.stderr)
 
-    def test_not_tax_inclusive_is_not_misread_as_tax_inclusive(self) -> None:
-        result, output_dir, temp_dir = self.run_build(
+    def test_not_tax_inclusive_is_recognized_but_not_recorded(self) -> None:
+        result, _, temp_dir = self.run_build(
             {
                 "versions": self.versions,
                 "records": [self.record(tax_status_raw="不含税", tax_status="未税")],
             }
         )
         self.addCleanup(temp_dir.cleanup)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        with (output_dir / "26-09-11_memory.csv").open(
-            encoding="utf-8", newline=""
-        ) as handle:
-            rows = list(csv.reader(handle))
-        self.assertEqual(rows[1][3], "未税")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("当前仅录入含税报价", result.stderr)
 
     def test_unconfirmed_tax_abbreviation_is_rejected(self) -> None:
         result, _, temp_dir = self.run_build(
@@ -417,7 +435,7 @@ class BuildImportCsvTests(unittest.TestCase):
             rows = list(csv.reader(handle))
         self.assertEqual(rows[1][4], "拆机")
 
-    def test_missing_gpu_condition_remains_empty(self) -> None:
+    def test_missing_gpu_condition_defaults_to_new(self) -> None:
         result, output_dir, temp_dir = self.run_build(
             {
                 "versions": self.versions,
@@ -439,7 +457,25 @@ class BuildImportCsvTests(unittest.TestCase):
         ) as handle:
             rows = list(csv.reader(handle))
         self.assertEqual(rows[1][1], "英伟达 RTX 4090 24G 涡轮")
-        self.assertEqual(rows[1][4], "")
+        self.assertEqual(rows[1][4], "全新")
+
+    def test_special_gpu_missing_condition_is_rejected(self) -> None:
+        namespace = runpy.run_path(str(SCRIPT))
+        normalize_condition = namespace["normalize_condition"]
+        validation_error = namespace["ValidationError"]
+        for product_name in ["H100 整机", "H100 模组"]:
+            with self.subTest(product_name=product_name):
+                with self.assertRaisesRegex(validation_error, "特殊GPU未标明货况"):
+                    normalize_condition(
+                        {
+                            "category": "gpu",
+                            "product_name": product_name,
+                            "condition_raw": None,
+                            "condition_classification": "missing",
+                            "condition": None,
+                        },
+                        1,
+                    )
 
     def test_prefixed_gpu_snapshot_is_inherited_without_double_prefix(self) -> None:
         temp_dir = tempfile.TemporaryDirectory()

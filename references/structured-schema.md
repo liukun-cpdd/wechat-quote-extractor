@@ -10,8 +10,8 @@ The finalized batch is not a transcript archive. Extraction-only signals must be
 {
   "batch_datetime": "26/09/14/14:30:00",
   "versions": {
-    "skill_version": "0.6.1",
-    "ruleset_version": "2026-09-15.2",
+    "skill_version": "0.6.2",
+    "ruleset_version": "2026-09-15.3",
     "product_map_version": "2026-09-11.1",
     "alias_map_version": "2026-09-11.2",
     "tax_map_version": "2026-09-11.1"
@@ -135,7 +135,7 @@ This object proves only that the current row was reviewed. It does not authorize
 
 Do not use a confidence score as a substitute for candidate evidence or a concrete issue
 
-Useful issue codes include `masked_price`, `missing_price`, `missing_tax_status`, `ambiguous_product`, `missing_product_discriminator`, `product_not_in_map`, `unsupported_category`, `missing_rate_evidence`, and `unconfirmed_correction`
+Useful issue codes include `masked_price`, `missing_price`, `missing_tax_status`, `untaxed_not_collected`, `ambiguous_product`, `missing_product_discriminator`, `product_not_in_map`, `unsupported_category`, `missing_rate_evidence`, `special_gpu_missing_condition`, `ambiguous_gpu_form`, and `unconfirmed_correction`
 
 Clearly unrelated text is ignored before record persistence and therefore has no record or issue code unless the user requests a full audit. Memory quotes that semantically describe white-label or dual-label modules are also ignored before persistence and are never expanded as shared multi-brand quotes
 
@@ -168,7 +168,7 @@ An `eligible` record must have
 - A valid current-batch `confirmation` when `match_method` is `user_confirmed`
 - Positive numeric price
 - Currency `CNY` or `USD`
-- Tax status `含税` or `未税`
+- Tax status `含税`; an explicitly untaxed quote is recognized but cannot be eligible
 - Condition normalized to `全新`, `拆机`, or null
 - Condition classification consistent with raw wording and normalized output
 - No unresolved issue
@@ -176,7 +176,9 @@ An `eligible` record must have
 
 A proposed correction cannot be eligible before confirmation. An unsupported hard-disk row, masked price, missing price, unresolved product, or missing required field cannot be eligible
 
-`explicit_new` writes `全新` and `explicit_not_new` writes `拆机`. For CPU and memory, `missing` and `ambiguous` also write `拆机`; for GPU, `missing` writes an empty cell and `ambiguous` cannot be eligible until clarified
+`explicit_new` writes `全新` and `explicit_not_new` writes `拆机`. For CPU and memory, `missing` and `ambiguous` also write `拆机`. For an ordinary GPU, `missing` writes `全新`; `ambiguous` cannot be eligible until clarified
+
+An explicit `整机` or `模组` description identifies a special GPU form. Equivalent wording is interpreted semantically, not through a closed alias list. A special-form GPU with no condition is `excluded` with `special_gpu_missing_condition`; uncertain form meaning is `needs_confirmation` with `ambiguous_gpu_form`
 
 The model determines whether arbitrary wording explicitly means brand-new or non-new. Do not require wording to appear in a fixed alias list. Warehouse and region do not block an otherwise valid CNY row
 
@@ -193,6 +195,7 @@ Tax status answers only whether the quoted price includes tax. It does not repre
 - Any positive expression containing `含税`, including `含税不对应`, `含税票不对应`, and `含税开其他品类发票`, normalizes to `含税` without confirmation
 - `未税` and the explicit negation `不含税` normalize to `未税`
 - `WS` is a confirmed case-insensitive alias for `未税`
+- A normalized `未税` record is `excluded` with `untaxed_not_collected` and cannot enter CSV in the current release
 - Invoice correspondence wording without an explicit tax-inclusion signal does not establish a tax status
 - If no explicit `含税`, `未税`, `不含税`, or confirmed tax alias appears, the record needs confirmation and cannot be eligible
 - If both positive tax-inclusive and tax-exclusive signals apply to the same record, the record needs confirmation

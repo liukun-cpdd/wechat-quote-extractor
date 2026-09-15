@@ -113,10 +113,12 @@ If the text could plausibly be an in-scope product written incorrectly, do not i
 ## Purchase price versus request for price
 
 ```text
-采购 三星32G6400 未税 2600收100条
+采购 三星32G6400 含税 2600收100条
 ```
 
 This contains an explicit purchase price and may become market evidence after paste time is applied. Currency defaults to CNY and the missing memory condition normalizes to `拆机`
+
+An otherwise identical quote marked `未税`, `不含税`, or `WS` is recognized but excluded from the current import with `untaxed_not_collected`
 
 ```text
 采购 三星32G6400 未税 接有货麻烦带数量报价
@@ -136,11 +138,11 @@ Expected processing
 |---|---|
 | Transient extraction | Recognize `28条` as quantity so it is not mistaken for price |
 | Final product | `镁光 64G 3200` |
-| Final tax evidence | `tax_status_raw=WS`, `tax_status=未税` |
+| Tax evidence | `tax_status_raw=WS`, `tax_status=未税` |
 | Final price | `4200` CNY |
-| Final condition | No explicit `全新`; memory defaults to `拆机` |
+| Eligibility | `excluded` with `untaxed_not_collected`; no CSV row |
 
-Discard `28条` before creating the finalized batch. `WS` is a confirmed tax alias and matches case-insensitively. This standalone line does not by itself establish sell or purchase direction; inherit direction from valid surrounding context or ask for it before CSV generation
+Discard `28条` before creating the finalized batch. `WS` is a confirmed tax alias and matches case-insensitively, but the current release records only tax-inclusive quotes
 
 ## Tax inclusion versus invoice correspondence
 
@@ -186,12 +188,15 @@ For GPU, CPU, and memory, preserve the raw expression, classify its meaning, and
 | `几成新`, `九成新`, `9成新` | `explicit_not_new` | `拆机` |
 | CPU or memory with no condition wording | `missing` | `拆机` |
 | CPU or memory with ambiguous condition wording | `ambiguous` | `拆机` |
-| GPU with no condition wording | `missing` | null |
+| Ordinary GPU with no condition wording | `missing` | `全新` |
 | GPU with ambiguous condition wording | `ambiguous` | Needs confirmation |
+| GPU explicitly described as `整机` or `模组`, with no condition wording | `missing` | Excluded |
 
 These phrases are examples, not an allowlist. Any explicit wording that clearly indicates a non-brand-new state belongs to `explicit_not_new` and writes `拆机`
 
 For CPU and memory, only an applicable explicit `全新` statement produces `全新`. Do not treat `现货`, warehouse, packaging, year, DC, or quantity as that statement
+
+For GPU, `整机` and `模组` directly identify special forms. Interpret equivalent descriptions semantically rather than through a fixed list. If a likely equivalent cannot be resolved, ask whether it is a special form; when a confirmed special form has no condition, use `special_gpu_missing_condition` and do not record it
 
 ## Memory DC recognition
 

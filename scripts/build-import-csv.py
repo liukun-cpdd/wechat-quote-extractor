@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 HEADERS = ["日期时间", "产品名型号", "报价", "税务状态", "货况"]
 CATEGORY_CODES = {"gpu": "gpu", "cpu": "cpu", "memory": "memory"}
 GPU_CSV_BRAND_PREFIX = "英伟达 "
+GPU_SPECIAL_FORM_TERMS = ("整机", "模组")
 ALLOWED_DIRECTIONS = {"sell", "purchase"}
 ALLOWED_TAX = {"含税", "未税"}
 ALLOWED_CONDITION_CLASSIFICATIONS = {
@@ -191,7 +192,14 @@ def normalize_condition(record: dict[str, Any], index: int) -> str:
     if classification == "missing":
         if raw or value:
             raise ValidationError(f"第{index}条货况分类为missing但仍包含货况值")
-        return "拆机" if defaults_to_disassembled else ""
+        if defaults_to_disassembled:
+            return "拆机"
+        if category == "gpu":
+            product_name = clean_text(record.get("product_name"))
+            if any(term in product_name for term in GPU_SPECIAL_FORM_TERMS):
+                raise ValidationError(f"第{index}条特殊GPU未标明货况，暂不录入")
+            return "全新"
+        return ""
     if classification == "ambiguous":
         if defaults_to_disassembled:
             if "全新" in raw or value == "全新":
@@ -596,6 +604,8 @@ def validate_eligible(
         csv_price = normalize_price(converted)
 
     tax_status = normalize_tax_status(record, index, tax_aliases)
+    if tax_status != "含税":
+        raise ValidationError(f"第{index}条当前仅录入含税报价")
 
     condition = normalize_condition(record, index)
 
