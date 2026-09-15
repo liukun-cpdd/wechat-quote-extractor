@@ -243,6 +243,25 @@ wechat-quote-extractor/
 - 不自动上传行情后台，除非用户另行提出并明确授权
 - 单次确认只作用于当前批次，正式规则变更必须经过统一版本发布
 
+## 版本更新记录
+
+以下记录以仓库中的正式 Git 标签为准，说明每个版本当时新增或改变的规则。后续版本可能覆盖早期规则，实际处理行为以当前版本规则为准
+
+| 版本 | 日期 | 主要更新 |
+|---|---|---|
+| [v0.6.2](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.6.2) | 2026-09-15 | 新输入只录入含税报价，未税、不含税和 `WS` 报价识别后暂不录入<br>普通 GPU 未标货况时默认全新<br>整机、模组等特殊 GPU 未标货况时不录入，疑似特殊形态无法判断时先确认 |
+| [v0.6.1](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.6.1) | 2026-09-15 | 快照根目录下先按 `yy-MM-dd` 建立日期目录，再在其中创建时间快照<br>同日只继承该日期目录中的最新快照，跨日期重新开始 |
+| [v0.6.0](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.6.0) | 2026-09-15 | GPU 完成商品映射后，在最终 CSV 产品名型号前增加“英伟达”<br>内存白牌、双标等特殊货不进入候选、快照或 CSV |
+| [v0.5.1](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.5.1) | 2026-09-14 | 支持内存多品牌共价表达，按语义展开为每个品牌一条报价<br>各品牌独立匹配商品，一个品牌失败不影响其他品牌 |
+| [v0.5.0](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.5.0) | 2026-09-14 | 建立不可覆盖的当日滚动累计快照<br>只使用同日最新快照作为基线，本批未涉及品类继续保留，跨日期不继承<br>CPU、内存未明确全新时统一按拆机处理<br>按产品名型号、报价、税务状态、货况四字段去重，相同记录保留更早时间 |
+| [v0.4.1](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.4.1) | 2026-09-14 | 识别内存 `DC22+`、`22`、`22+` 等生产日期表达<br>内存带 DC 且未明确全新时按拆机处理<br>增加当前批次五字段完全重复记录去重 |
+| [v0.4.0](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.4.0) | 2026-09-11 | 税务状态只表示报价是否含税，`含税不对应` 等表达归一为含税<br>CPU 缺少品牌时可根据完整型号判断 Intel 或 AMD，但必须唯一匹配商品字典<br>数量、DC、内存布局、质保、包装和发票对应情况改为临时提取信息，不进入正式结果 |
+| [v0.3.3](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.3.3) | 2026-09-11 | 新增独立税务别名表<br>确认 `WS` 为“未税”的大小写不敏感别名，并纳入版本校验 |
+| [v0.3.2](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.3.2) | 2026-09-11 | 货况从固定词表判断改为语义判断<br>二手、拆新、拆机新、翻新及成色描述等所有明确非全新表达统一归为拆机 |
+| [v0.3.1](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.3.1) | 2026-09-11 | 确认 `MT` 为“镁光”的品牌别名<br>统一 GPU、CPU、内存的非空货况为全新或拆机，并补充常见非全新表达归一规则 |
+| [v0.3.0](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.3.0) | 2026-09-11 | 将模型语义判断、可替换字典和确定性校验分层<br>新增 Skill、规则、商品表和别名表版本校验<br>疑似错字或简称只提出候选，用户确认仅作用于当前批次，正式规则通过统一发布流程更新 |
+| [v0.2.0](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.2.0) | 2026-09-11 | 建立首个可追溯基线<br>支持粘贴报价清洗、品类拆分、商品映射、价格与数量区分、打码价格排除、香港美元换算及五字段 CSV 生成<br>明确第一阶段只生成本地 CSV，不自动上传行情后台 |
+
 ## 验证与版本
 
 ```powershell
