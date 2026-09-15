@@ -437,7 +437,75 @@ class BuildImportCsvTests(unittest.TestCase):
             encoding="utf-8", newline=""
         ) as handle:
             rows = list(csv.reader(handle))
+        self.assertEqual(rows[1][1], "英伟达 RTX 4090 24G 涡轮")
         self.assertEqual(rows[1][4], "")
+
+    def test_prefixed_gpu_snapshot_is_inherited_without_double_prefix(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        snapshot_root = Path(temp_dir.name) / "snapshots"
+        gpu_record = self.record(
+            quote_datetime="26/09/11/09:00",
+            category="gpu",
+            brand_raw=None,
+            brand_normalized=None,
+            product_name="RTX 4090 24G 涡轮",
+            matched_product_id="3904",
+        )
+        first, first_dir = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/09:00:00",
+                "versions": self.versions,
+                "records": [gpu_record],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(first.returncode, 0, first.stderr)
+        original = (first_dir / "26-09-11_gpu.csv").read_bytes()
+
+        second, second_dir = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/10:00:00",
+                "versions": self.versions,
+                "records": [],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(second.returncode, 0, second.stderr)
+        inherited = (second_dir / "26-09-11_gpu.csv").read_bytes()
+        self.assertEqual(inherited, original)
+        self.assertEqual(inherited.count("英伟达 ".encode()), 1)
+
+    def test_legacy_gpu_baseline_is_normalized_without_mutating_history(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        snapshot_root = Path(temp_dir.name) / "snapshots"
+        baseline = snapshot_root / "26-09-11_09-00-00"
+        baseline.mkdir(parents=True)
+        legacy_file = baseline / "26-09-11_gpu.csv"
+        legacy_file.write_text(
+            "日期时间,产品名型号,报价,税务状态,货况\n"
+            "26/09/11/09:00,RTX 4090 24G 涡轮,25800,含税,拆机\n",
+            encoding="utf-8",
+            newline="",
+        )
+        original = legacy_file.read_bytes()
+
+        result, output_dir = self.run_build_in_root(
+            {
+                "batch_datetime": "26/09/11/10:00:00",
+                "versions": self.versions,
+                "records": [],
+            },
+            snapshot_root,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(legacy_file.read_bytes(), original)
+        with (output_dir / "26-09-11_gpu.csv").open(
+            encoding="utf-8", newline=""
+        ) as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual(rows[1][1], "英伟达 RTX 4090 24G 涡轮")
 
     def test_ambiguous_condition_is_rejected(self) -> None:
         result, _, temp_dir = self.run_build(

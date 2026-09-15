@@ -6,9 +6,9 @@
 
 将聊天中不规则的 GPU、CPU、内存报价，整理为可审阅、可校验、可导入的行情 CSV
 
-![Version](https://img.shields.io/badge/version-v0.5.1-E87524?style=flat-square)
+![Version](https://img.shields.io/badge/version-v0.6.0-E87524?style=flat-square)
 ![Codex Skill](https://img.shields.io/badge/OpenAI_Codex-Skill-111827?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-35_passed-1F9D69?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-37_passed-1F9D69?style=flat-square)
 ![Visibility](https://img.shields.io/badge/visibility-public-F3A847?style=flat-square)
 
 </div>
@@ -66,7 +66,8 @@ flowchart LR
 ### 产品与品牌
 
 - 当前支持 GPU、CPU 和内存；硬盘在分类编码与真实模板确认前不生成 CSV
-- 最终产品名必须与 [商品映射表](references/product-model-map.csv) 完全一致
+- 结构化产品名必须与 [商品映射表](references/product-model-map.csv) 完全一致
+- GPU 完成商品映射后，在最终 CSV 产品名型号前统一增加“英伟达”
 - `SK` 归一为海力士，`MT` 和 `美光` 归一为镁光
 - 未确认的品牌或型号修正不会被静默替换，只能提出候选或由用户确认当前批次
 - CPU 缺少品牌时，可根据完整型号语义判断 Intel 或 AMD，但必须唯一匹配商品映射
@@ -87,6 +88,17 @@ flowchart LR
 ```
 
 `/`、顿号、空格或“和、与、及”等连接方式都只是理解线索，不是固定触发列表。只有品牌位置和共享范围明确时才展开，不影响 CPU、GPU 列表或型号内部的分隔符
+
+### 不纳入行情的内存特殊货
+
+明确描述为“白牌”或“双标”的内存属于特殊货，不作为标准行情数据来源，也不会进入候选预览、累计快照或 CSV
+
+```text
+白牌 镁光 32G 5600 含税6800
+三星联想双标64G 6400 含税7200
+```
+
+“双标”表示一条内存同时带有两个品牌标识，不属于多个品牌共用一个价格，因此该排除规则优先于多品牌共价展开
 
 ### 价格与税务
 
@@ -153,6 +165,7 @@ snapshots/
 日期时间,产品名型号,报价,税务状态,货况
 26/09/14/14:30,三星 32G 4800,8200,含税,拆机
 26/09/14/14:30,海力士 32G 4800,8200,含税,拆机
+26/09/14/14:30,英伟达 RTX 4090 24G 涡轮,25800,含税,拆机
 ```
 
 数量、DC、内存布局、质保、包装方式以及发票是否对应，只用于理解原文，不进入最终 CSV 或长期结构化结果
@@ -233,7 +246,7 @@ wechat-quote-extractor/
 python -X utf8 -B -m unittest discover -s tests -v
 ```
 
-当前版本 `v0.5.1`，共 35 项自动化测试。版本变更、字典更新和同事分发遵循 [统一发布流程](references/release-process.md)
+当前版本 `v0.6.0`，共 37 项自动化测试。版本变更、字典更新和同事分发遵循 [统一发布流程](references/release-process.md)
 
 ---
 

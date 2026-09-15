@@ -2,7 +2,7 @@
 name: wechat-quote-extractor
 description: Extract structured market quotes from pasted Chinese hardware offer or purchase text, propose reviewable corrections for likely brand or model variants, and generate validated category CSV files for the existing market import workflow. Use for 微信报价整理、行情报价识别、采购价或售价提取、以及 GPU、CPU、内存和硬盘行情导入准备，不用于联系人或聊天记录管理
 metadata:
-  version: "0.5.1"
+  version: "0.6.0"
 ---
 
 # WeChat Quote Extractor
@@ -62,13 +62,14 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 - Use paste time when the source has no explicit quote time
 - For CPU and memory, write `全新` only when the applicable source explicitly states `全新`; otherwise write `拆机`
 - For GPU, explicit brand-new wording writes `全新`, explicit non-new wording writes `拆机`, missing condition remains empty, and ambiguous condition requires confirmation
+- Ignore memory quotes that clearly describe white-label or dual-label modules; do not preview, persist, or write them to CSV
 - DC forms such as `DC22+`, `22`, and `22+` remain semantic extraction cues only; do not retain them or use them to override an explicit `全新`
 - A price with `x` or `X` replacing digits is invalid; multiplication such as `25800*10张` is not masking
 - Explicit sell and purchase prices can be market evidence; a request for a quote without a concrete price cannot
 - USD located in Hong Kong is converted with the official applicable USD/CNY central parity rate multiplied by `1.13`, then rounded to a whole yuan using decimal half-up
 - Do not generate a hard-disk CSV until its category code and import template are confirmed
 - Do not write unresolved, out-of-scope, or unmapped records to CSV
-- Product names written to CSV must exactly match the current product map
+- Structured product names must exactly match the current product map. After a GPU match, prefix the CSV product name with `英伟达`; do not change the mapped identity
 
 ## CSV generation
 

@@ -10,8 +10,8 @@ The finalized batch is not a transcript archive. Extraction-only signals must be
 {
   "batch_datetime": "26/09/14/14:30:00",
   "versions": {
-    "skill_version": "0.5.1",
-    "ruleset_version": "2026-09-14.3",
+    "skill_version": "0.6.0",
+    "ruleset_version": "2026-09-15.1",
     "product_map_version": "2026-09-11.1",
     "alias_map_version": "2026-09-11.2",
     "tax_map_version": "2026-09-11.1"
@@ -137,7 +137,7 @@ Do not use a confidence score as a substitute for candidate evidence or a concre
 
 Useful issue codes include `masked_price`, `missing_price`, `missing_tax_status`, `ambiguous_product`, `missing_product_discriminator`, `product_not_in_map`, `unsupported_category`, `missing_rate_evidence`, and `unconfirmed_correction`
 
-Clearly unrelated text is ignored before record persistence and therefore has no record or issue code unless the user requests a full audit
+Clearly unrelated text is ignored before record persistence and therefore has no record or issue code unless the user requests a full audit. Memory quotes that semantically describe white-label or dual-label modules are also ignored before persistence and are never expanded as shared multi-brand quotes
 
 ## CPU brand-resolution contract
 
@@ -217,7 +217,7 @@ The generator recomputes `price × rate × 1.13` and rounds to a whole yuan with
 | CSV column | Structured source |
 |---|---|
 | `日期时间` | `quote_datetime` |
-| `产品名型号` | Mapped `product_name` |
+| `产品名型号` | Mapped `product_name`; prefix GPU output with `英伟达` after matching |
 | `报价` | CNY price, or recomputed and rounded CNY result for USD |
 | `税务状态` | Normalized `tax_status` |
 | `货况` | `condition`, empty when null |
@@ -236,6 +236,6 @@ Encoding and filename
 
 The generator requires `--snapshot-root <confirmed-root>` and creates `yy-MM-dd_HH-mm-ss` beneath it. Its result reports `snapshot_directory`, `baseline_directory`, and `first_snapshot_of_day`
 
-The baseline is either null for the day's first batch or exactly one latest earlier same-day snapshot. Every inherited CSV must pass the five-column contract before the new directory is created
+The baseline is either null for the day's first batch or exactly one latest earlier same-day snapshot. Every inherited CSV must pass the five-column contract before the new directory is created. New snapshots normalize inherited legacy GPU names to the current `英伟达` prefix while leaving the baseline untouched
 
 The deduplication key is the four-tuple `(产品名型号, 报价, 税务状态, 货况)`. When duplicate keys exist, retain the row with the earliest valid `日期时间`. `duplicate_rows_removed` reports discarded rows

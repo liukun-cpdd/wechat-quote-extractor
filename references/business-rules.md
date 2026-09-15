@@ -58,6 +58,8 @@ For a memory quote in which multiple recognizable brands clearly share one set o
 
 Apply the shared capacity, frequency, price, tax status, and condition to every expanded candidate, then normalize aliases and resolve each product independently. One unmatched brand does not block another. Missing evidence and expanded-record deduplication continue to follow the normal rules
 
+Before expanding or matching memory quotes, ignore any line that clearly describes a white-label or dual-label module. Interpret the meaning rather than relying on a fixed phrase list. This exclusion takes precedence over shared multi-brand pricing: a dual-label product is one special module, not multiple brands sharing one quote. Do not create a candidate, preview row, feedback item, or CSV row for it
+
 ## Product identity resolution
 
 Use [product-model-map.csv](product-model-map.csv) as the only importable product dictionary. Use [brand-alias-map.csv](brand-alias-map.csv) as the only automatic brand-alias dictionary
@@ -106,7 +108,7 @@ Do not create a permanent alias from general knowledge, one quote, or one user's
 
 ## Product naming
 
-The final `product_name` must equal the selected row's `csv_product_name` exactly
+The structured `product_name` must equal the selected row's `csv_product_name` exactly. For GPU only, add the `英伟达` prefix after mapping when writing the CSV; keep the product map and structured identity unchanged
 
 For memory candidates, capacity and frequency are important matching signals. Recognize memory-layout tokens such as `2S2R4`, `2R4`, `2R8`, and `4DR4` only to separate source attributes. Do not append them to the final product name and discard them before the finalized batch
 
@@ -195,7 +197,7 @@ Do not generate a USD-derived row when Hong Kong location is unconfirmed or any 
 
 ## Eligibility and output
 
-Only `eligible` records enter CSV. `needs_confirmation`, `excluded`, ignored unrelated text, suggestions, and feedback never enter CSV
+Only `eligible` records enter CSV. `needs_confirmation`, `excluded`, ignored unrelated text, ignored white-label or dual-label memory quotes, suggestions, and feedback never enter CSV
 
 One eligible row must have a supported category, exact mapped product ID and name, valid quote time, sell or purchase direction, exact positive price, tax status, allowed condition, no unresolved issue, compatible release versions, and any required current-batch confirmation evidence. An eligible CPU with an omitted source brand must also carry valid `model_inferred` evidence
 
@@ -212,6 +214,7 @@ Each timestamped output directory is the complete quote snapshot for its calenda
 - Validate every baseline CSV's UTF-8 encoding, five-column header, filename date, row date, and row width before creating the new snapshot
 - Carry every baseline category CSV into the new directory; copy files for categories absent from the current batch without rewriting them
 - Merge eligible current-batch rows into their category files, while leaving the baseline directory unchanged
+- Apply the current category output naming to inherited rows in the new snapshot; normalize legacy GPU names to the `英伟达` prefix without modifying the baseline
 - Never inherit data across calendar dates
 
 Deduplicate the baseline plus current batch by `产品名型号`, `报价`, `税务状态`, and `货况`. `日期时间` does not participate in identity. When all four fields match, retain the row with the earlier date-time; preserve both rows when any of the four fields differs

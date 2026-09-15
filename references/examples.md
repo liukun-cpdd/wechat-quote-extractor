@@ -53,6 +53,21 @@ When the brand position and shared scope are unambiguous, expand this into separ
 
 Expressions such as `三星/SK` or `三星和SK` may carry the same meaning. These are examples, not a delimiter allowlist; do not split separators inside models or configurations, and do not apply this memory rule to CPU or GPU lists. If one expanded brand is unmapped, exclude only that candidate. Missing price or tax evidence remains subject to the normal eligibility rules
 
+## White-label and dual-label memory
+
+```text
+白牌 镁光 32G 5600 含税6800
+三星联想双标64G 6400 含税7200
+```
+
+Ignore both lines before candidate persistence. They describe special white-label or dual-label memory whose price is not used as market evidence. Do not ask for missing attributes, include them in the preview, or write an exclusion record
+
+The second line is one dual-label module, not a shared-price expression for separate Samsung and Lenovo products. This exclusion takes precedence over the shared multi-brand expansion rule. The examples illustrate the meaning and are not a fixed wording list
+
+## GPU CSV product name
+
+After `RTX 4090 24G 涡轮` resolves to one product-map row, keep that mapped name in the structured record and write `英伟达 RTX 4090 24G 涡轮` to the GPU CSV. Do not add the prefix before identity resolution or to CPU and memory rows
+
 ## Typo and shorthand proposal
 
 ```text

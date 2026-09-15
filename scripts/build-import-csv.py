@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 
 HEADERS = ["日期时间", "产品名型号", "报价", "税务状态", "货况"]
 CATEGORY_CODES = {"gpu": "gpu", "cpu": "cpu", "memory": "memory"}
+GPU_CSV_BRAND_PREFIX = "英伟达 "
 ALLOWED_DIRECTIONS = {"sell", "purchase"}
 ALLOWED_TAX = {"含税", "未税"}
 ALLOWED_CONDITION_CLASSIFICATIONS = {
@@ -147,6 +148,12 @@ def load_payload(path: Path) -> dict[str, Any]:
 
 def clean_text(value: Any) -> str:
     return "" if value is None else str(value).strip()
+
+
+def format_csv_product_name(category: str, mapped_product_name: str) -> str:
+    if category == "gpu" and not mapped_product_name.startswith(GPU_CSV_BRAND_PREFIX):
+        return f"{GPU_CSV_BRAND_PREFIX}{mapped_product_name}"
+    return mapped_product_name
 
 
 def positive_decimal(value: Any, field_name: str) -> Decimal:
@@ -588,13 +595,16 @@ def validate_eligible(
 
     condition = normalize_condition(record, index)
 
-    row = (quote_datetime, product_name, csv_price, tax_status, condition)
+    csv_product_name = format_csv_product_name(category, product_name)
+    row = (quote_datetime, csv_product_name, csv_price, tax_status, condition)
     return f"{file_date}_{CATEGORY_CODES[category]}.csv", row
 
 
-def read_existing(path: Path, expected_date: str) -> list[tuple[str, ...]]:
+def read_existing(
+    path: Path, expected_date: str
+) -> tuple[list[tuple[str, ...]], bool]:
     if not path.exists():
-        return []
+        return [], False
     try:
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.reader(handle)
@@ -602,6 +612,8 @@ def read_existing(path: Path, expected_date: str) -> list[tuple[str, ...]]:
             if header != HEADERS:
                 raise ValidationError(f"已有CSV表头不匹配: {path}")
             rows = []
+            normalized = False
+            category = path.stem.rsplit("_", 1)[-1].casefold()
             for line_number, row in enumerate(reader, start=2):
                 if len(row) != len(HEADERS):
                     raise ValidationError(f"已有CSV第{line_number}行列数错误: {path}")
@@ -613,25 +625,33 @@ def read_existing(path: Path, expected_date: str) -> list[tuple[str, ...]]:
                     ) from exc
                 if row_date != expected_date:
                     raise ValidationError(f"已有CSV包含跨日期记录: {path}")
+                formatted_name = format_csv_product_name(category, row[1])
+                if formatted_name != row[1]:
+                    row[1] = formatted_name
+                    normalized = True
                 rows.append(tuple(row))
-            return rows
+            return rows, normalized
     except (OSError, UnicodeError) as exc:
         raise ValidationError(f"无法读取已有CSV {path}: {exc}") from exc
 
 
 def load_baseline_files(
     baseline_dir: Path | None, expected_date: str
-) -> dict[str, list[tuple[str, ...]]]:
+) -> tuple[dict[str, list[tuple[str, ...]]], set[str]]:
     if baseline_dir is None:
-        return {}
+        return {}, set()
 
     files: dict[str, list[tuple[str, ...]]] = {}
+    normalized_files: set[str] = set()
     for path in sorted(baseline_dir.glob("*.csv")):
         match = CSV_NAME_PATTERN.fullmatch(path.name)
         if match is None or match.group("date") != expected_date:
             raise ValidationError(f"历史快照包含日期或命名不匹配的CSV: {path}")
-        files[path.name] = read_existing(path, expected_date)
-    return files
+        rows, normalized = read_existing(path, expected_date)
+        files[path.name] = rows
+        if normalized:
+            normalized_files.add(path.name)
+    return files, normalized_files
 
 
 def write_csv(path: Path, rows: list[tuple[str, ...]]) -> None:
@@ -707,7 +727,9 @@ def main() -> int:
                     )
                 grouped[filename].append(row)
 
-        baseline_files = load_baseline_files(baseline_dir, snapshot_date)
+        baseline_files, normalized_baseline_files = load_baseline_files(
+            baseline_dir, snapshot_date
+        )
         all_filenames = sorted(set(baseline_files).union(grouped))
         prepared: dict[str, tuple[list[tuple[str, ...]], bool, int, int]] = {}
         outputs = []
@@ -716,7 +738,11 @@ def main() -> int:
         for filename in all_filenames:
             baseline_rows = baseline_files.get(filename, [])
             new_rows = grouped.get(filename, [])
-            inherited_unchanged = filename in baseline_files and not new_rows
+            inherited_unchanged = (
+                filename in baseline_files
+                and not new_rows
+                and filename not in normalized_baseline_files
+            )
             if inherited_unchanged:
                 final_rows = baseline_rows
                 duplicates_removed = 0
