@@ -200,6 +200,8 @@ Do not generate a USD-derived row when Hong Kong location is unconfirmed or any 
 
 ## Eligibility and output
 
+For a mixed batch, immediately generate the daily snapshot from valid eligible records without waiting for uncertain records. Keep pending source excerpts transiently in the conversation and show the original text, issue, and reference evidence together. Once confirmed, validate and add only resolved eligible records to a new same-day snapshot. Preserve the earlier snapshot and original quote time; do not carry unconfirmed records into CSV. If no records are eligible, wait for confirmation rather than creating an empty snapshot
+
 Only `eligible` records enter CSV. `needs_confirmation`, `excluded`, ignored unrelated text, ignored white-label or dual-label memory quotes, suggestions, and feedback never enter CSV
 
 One eligible row must have a supported category, exact mapped product ID and name, valid quote time, sell or purchase direction, exact positive price, tax status `含税`, allowed condition, no unresolved issue, compatible release versions, and any required current-batch confirmation evidence. An eligible CPU with an omitted source brand must also carry valid `model_inferred` evidence

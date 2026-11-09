@@ -805,6 +805,43 @@ class BuildImportCsvTests(unittest.TestCase):
             rows = list(csv.reader(handle))
         self.assertEqual(len(rows), 3)
 
+    def test_mixed_batch_then_confirmed_original_price_updates_new_snapshot(self) -> None:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        root = Path(temp_dir.name) / 'snapshots'
+        normal = self.record(quote_datetime='26/09/11/09:00')
+        pending = self.record(
+            quote_datetime='26/09/11/09:00', brand_raw='SK',
+            brand_normalized='海力士', brand_resolution_method='confirmed_alias',
+            product_name='海力士 64G 2933', matched_product_id='32',
+            match_method='confirmed_alias', price='31000',
+            eligibility='needs_confirmation', requires_confirmation=True,
+            issues=['price_deviation'],
+        )
+        first, first_dir = self.run_build_in_root({
+            'batch_datetime': '26/09/11/09:00:00', 'versions': self.versions,
+            'records': [normal, pending],
+        }, root)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        first_file = first_dir / '26-09-11_memory.csv'
+        original = first_file.read_bytes()
+        self.assertIn('海力士 32G 3200', original.decode('utf-8'))
+        self.assertNotIn('31000', original.decode('utf-8'))
+
+        confirmed = dict(pending, eligibility='eligible', requires_confirmation=False, issues=[])
+        second, second_dir = self.run_build_in_root({
+            'batch_datetime': '26/09/11/10:00:00', 'versions': self.versions,
+            'records': [confirmed],
+        }, root)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(Path(json.loads(second.stdout)['baseline_directory']), first_dir.resolve())
+        self.assertEqual(first_file.read_bytes(), original)
+        with (second_dir / '26-09-11_memory.csv').open(encoding='utf-8', newline='') as f:
+            rows = list(csv.DictReader(f))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual([r['报价'] for r in rows if r['产品名型号'] == '海力士 64G 2933'], ['31000'])
+        self.assertIn('海力士 32G 3200', [r['产品名型号'] for r in rows])
+
     def test_same_day_snapshot_inherits_unmodified_categories(self) -> None:
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)

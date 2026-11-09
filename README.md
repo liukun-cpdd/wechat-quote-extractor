@@ -6,7 +6,7 @@
 
 将聊天中不规则的 GPU、CPU、内存报价，整理为可审阅、可校验、可导入的行情 CSV
 
-![Version](https://img.shields.io/badge/version-v0.6.3-E87524?style=flat-square)
+![Version](https://img.shields.io/badge/version-v0.6.4-E87524?style=flat-square)
 ![Codex Skill](https://img.shields.io/badge/OpenAI_Codex-Skill-111827?style=flat-square)
 ![Tests](https://img.shields.io/badge/tests-39_passed-1F9D69?style=flat-square)
 ![Visibility](https://img.shields.io/badge/visibility-public-F3A847?style=flat-square)
@@ -45,15 +45,17 @@ flowchart LR
     F --> H[商品映射与资格判断]
     G --> H
     H --> M[官网型号核对与价格对比]
-    M --> I[完整预览与集中确认]
-    I --> J[确定性校验]
+    M --> I[确定项与待确认项分流]
+    I --> J[确定项校验并生成]
+    I --> N[集中确认待确认项]
+    N --> J
     J --> K[当日累计快照]
     K --> L[分类 CSV]
 
     classDef warm fill:#FFF3E8,stroke:#E87524,color:#3A2416
     classDef dark fill:#24211F,stroke:#24211F,color:#FFFFFF
     class A,L dark
-    class B,C,D,E,F,G,H,I,J,K,M warm
+    class B,C,D,E,F,G,H,I,J,K,M,N warm
 ```
 
 处理过程分为四层：
@@ -142,7 +144,8 @@ GPU 名称明确出现“整机”或“模组”时，按特殊形态处理；�
 ### 官网行情核对
 
 - 每批查询官网商品列表，以同品类、同型号、同货况的最新报价为参考
-- 新报价与参考价的绝对偏离超过 8% 时提醒，正好 8% 不触发提醒
+- 新报价与参考价的绝对偏离超过 8% 时暂不录入，等待用户确认；正好 8% 不触发提醒
+- 混合批次先生成确定项，用户确认后在当天新快照补录，不自动更改原始报价
 - 官网没有唯一匹配商品、参考价无效或接口不可用时，明确提示无法比较
 - 相似名称及价格仅用于提出候选，不会自动改写原始报价或商品映射
 - 官网最新价的税务口径尚未确认，比价结果仅作为参考
@@ -214,7 +217,7 @@ https://github.com/liukun-cpdd/wechat-quote-extractor
 2. 输入“微信报价整理”进行查找
 3. 选择“微信报价整理”并确认
 4. 直接粘贴需要处理的报价文本
-5. Codex 会先给出完整预览，并集中询问仍需确认的问题
+5. Codex 先生成符合条件的报价，同时集中展示待确认项；确认通过后补入当天新快照
 6. 生成 CSV 时，如果快照输出根目录尚未明确，Codex 会提示你选择或确认一个目录
 
 快照根目录确认后，后续同日批次会自动从该目录中的当日最新快照继续累计，不需要每次重新选择
@@ -264,6 +267,7 @@ wechat-quote-extractor/
 
 | 版本 | 日期 | 主要更新 |
 |---|---|---|
+| v0.6.4 | 2026-11-09 | 混合批次先生成确定项，待确认项通过后补入当天新快照<br>超过 8% 的异常报价确认前暂不录入，确认按原价录入后不重复询问 |
 | v0.6.3 | 2026-11-09 | 新增官网商品查询与名称核对<br>同型号、同货况价格偏离超过 8% 时提醒<br>官网数据不可用或无法匹配时明确提示，运营密码使用本机配置 |
 | [v0.6.2](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.6.2) | 2026-09-15 | 新输入只录入含税报价，未税、不含税和 `WS` 报价识别后暂不录入<br>普通 GPU 未标货况时默认全新<br>整机、模组等特殊 GPU 未标货况时不录入，疑似特殊形态无法判断时先确认 |
 | [v0.6.1](https://github.com/liukun-cpdd/wechat-quote-extractor/tree/v0.6.1) | 2026-09-15 | 快照根目录下先按 `yy-MM-dd` 建立日期目录，再在其中创建时间快照<br>同日只继承该日期目录中的最新快照，跨日期重新开始 |
@@ -284,7 +288,7 @@ wechat-quote-extractor/
 python -X utf8 -B -m unittest discover -s tests -v
 ```
 
-当前版本 `v0.6.3`，包含 39 项 CSV 回归测试和 1 项官网接口联合测试。联合测试需要本地密码并访问官网，没有密码时自动跳过。官网比价由 Skill 执行流程和实时接口共同完成，详见 [官网行情核对规则](references/market-comparison.md)。版本变更、字典更新和同事分发遵循 [统一发布流程](references/release-process.md)
+当前版本 `v0.6.4`，官网接口联合测试需要本地密码并访问官网，没有密码时自动跳过。官网比价由 Skill 执行流程和实时接口共同完成，详见 [官网行情核对规则](references/market-comparison.md)。版本变更、字典更新和同事分发遵循 [统一发布流程](references/release-process.md)
 
 ---
 

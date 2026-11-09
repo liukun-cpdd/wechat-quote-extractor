@@ -2,7 +2,7 @@
 name: wechat-quote-extractor
 description: Extract structured market quotes from pasted Chinese hardware offer or purchase text, propose reviewable corrections for likely brand or model variants, and generate validated category CSV files for the existing market import workflow. Use for 微信报价整理、行情报价识别、采购价或售价提取、以及 GPU、CPU、内存和硬盘行情导入准备，不用于联系人或聊天记录管理
 metadata:
-  version: "0.6.3"
+  version: "0.6.4"
 ---
 
 # WeChat Quote Extractor
@@ -39,10 +39,10 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 6. Ignore clearly unrelated products. Do not retain or ask about them unless the user requests a full audit
 7. Discard extraction-only quantity, year, DC, batch, memory-layout, warranty, packing, and invoice-correspondence signals
 8. Query the official operations catalog once per relevant category, compare every resolvable quote with the matching product and condition, and include lookup results and warnings in the complete preview as specified in market-comparison.md
-9. Ask all material clarification questions together. A user's answer may resolve only the current batch; it must not modify Skill files or shared dictionaries
-10. Rebuild the preview and comparison after confirmation and run deterministic validation before generating CSV
-11. Generate a complete timestamped daily snapshot from `eligible` records with `scripts/build-import-csv.py`
-12. Return the snapshot path plus counts of eligible, pending, excluded, duplicates removed, and written records
+9. Mark uncertain identities and unconfirmed price deviations as `needs_confirmation`. Show each pending original quote, issue, and reference evidence in the conversation
+10. Validate and generate a complete timestamped daily snapshot immediately for eligible records, without waiting for pending records. If none are eligible, do not create an empty snapshot
+11. Ask pending questions together. Once a user confirms, revalidate the resolved records and add eligible confirmations to a new same-day snapshot using the existing latest baseline; preserve the original quote time and earlier snapshot. Batch confirmations never change shared dictionaries
+12. Return snapshot paths and counts of eligible, pending, excluded, duplicates removed, and written records
 
 ## Decision boundary
 
