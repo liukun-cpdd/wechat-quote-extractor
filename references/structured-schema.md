@@ -10,8 +10,8 @@ The finalized batch is not a transcript archive. Extraction-only signals must be
 {
   "batch_datetime": "26/09/14/14:30:00",
   "versions": {
-    "skill_version": "0.6.2",
-    "ruleset_version": "2026-09-15.3",
+    "skill_version": "0.6.3",
+    "ruleset_version": "2026-11-09.1",
     "product_map_version": "2026-09-11.1",
     "alias_map_version": "2026-09-11.2",
     "tax_map_version": "2026-09-11.1"

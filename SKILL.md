@@ -2,7 +2,7 @@
 name: wechat-quote-extractor
 description: Extract structured market quotes from pasted Chinese hardware offer or purchase text, propose reviewable corrections for likely brand or model variants, and generate validated category CSV files for the existing market import workflow. Use for 微信报价整理、行情报价识别、采购价或售价提取、以及 GPU、CPU、内存和硬盘行情导入准备，不用于联系人或聊天记录管理
 metadata:
-  version: "0.6.2"
+  version: "0.6.3"
 ---
 
 # WeChat Quote Extractor
@@ -12,6 +12,8 @@ Turn pasted quote text into reviewed market candidates and import-ready CSV file
 ## References
 
 Read [business-rules.md](references/business-rules.md) before interpreting quote text
+
+Read [market-comparison.md](references/market-comparison.md) for the live catalog lookup and price warning before finalizing a batch
 
 Read [structured-schema.md](references/structured-schema.md) before presenting candidates or generating CSV files
 
@@ -36,9 +38,9 @@ Read [release-process.md](references/release-process.md) only when collecting fe
 5. If the wording is likely a typo, shorthand, or unconfirmed alias, propose mapped candidates with reasons. Do not silently replace the source wording
 6. Ignore clearly unrelated products. Do not retain or ask about them unless the user requests a full audit
 7. Discard extraction-only quantity, year, DC, batch, memory-layout, warranty, packing, and invoice-correspondence signals
-8. Classify relevant candidates as `eligible`, `needs_confirmation`, or `excluded`, then show one complete preview
+8. Query the official operations catalog once per relevant category, compare every resolvable quote with the matching product and condition, and include lookup results and warnings in the complete preview as specified in market-comparison.md
 9. Ask all material clarification questions together. A user's answer may resolve only the current batch; it must not modify Skill files or shared dictionaries
-10. Rebuild the preview after confirmation and run deterministic validation
+10. Rebuild the preview and comparison after confirmation and run deterministic validation before generating CSV
 11. Generate a complete timestamped daily snapshot from `eligible` records with `scripts/build-import-csv.py`
 12. Return the snapshot path plus counts of eligible, pending, excluded, duplicates removed, and written records
 
